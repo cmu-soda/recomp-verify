@@ -2,9 +2,12 @@ package tlc2;
 
 import java.util.List;
 
+import cmu.isr.ts.LTS;
+import cmu.isr.ts.lts.ltsa.FSPWriter;
 import recomp.Composition;
 import recomp.Decomposition;
 import recomp.RecompVerify;
+import recomp.WeakestAssumption;
 
 public class Main {
     public static void main(String[] args) throws Exception {
@@ -24,6 +27,7 @@ public class Main {
     		final String tla = args[0];
     		final String cfg = args[1];
     		final boolean decompose = hasFlag(args, "--decomp");
+    		final boolean weakestAssumption = hasFlag(args, "--wa");
     		
     		if (decompose) {
     			// write a config without any invariants / properties
@@ -34,6 +38,13 @@ public class Main {
     			final List<String> components = Decomposition.decompAll(tla, cfg);
     			final List<String> trimmedComponents = Composition.orderedTrimmedComponents(tla, cfg, components);
     		 	System.out.println(String.join(",", trimmedComponents));
+    		}
+    		else if (weakestAssumption) {
+    			//final LTS<Integer, String> wa = WeakestAssumption.calc(tla, cfg);
+    	    	//FSPWriter.INSTANCE.write(System.out, wa);
+    	    	//System.out.println();
+    			final String symWA = WeakestAssumption.calcSymbolic(tla, cfg);
+    			System.out.println(symWA);
     		}
     		else {
     			// run recomp-verify

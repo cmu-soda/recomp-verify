@@ -20,6 +20,11 @@
 			<accessrule kind="accessible" pattern="jdk/internal/**"/>
 		</accessrules>
 	</classpathentry>
+	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER">
+		<attributes>
+			<attribute name="module" value="true"/>
+		</attributes>
+	</classpathentry>
 	<classpathentry kind="con" path="org.eclipse.pde.core.requiredPlugins"/>
 	<classpathentry kind="lib" path="lib/javax.mail/mailapi-1.6.3.jar"/>
 	<classpathentry kind="lib" path="lib/jline/jline-reader-3.14.1.jar"/>
@@ -31,6 +36,5 @@
 	<classpathentry kind="lib" path="lib/lsp/org.eclipse.lsp4j.debug-0.12.0.jar"/>
 	<classpathentry kind="lib" path="lib/lsp/org.eclipse.lsp4j.jsonrpc-0.12.0.jar"/>
 	<classpathentry kind="lib" path="/Users/idardik/Documents/CMU/tolerance-permissiveness/LTS-Robustness/bin/LTS-Robustness.jar"/>
-	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
 	<classpathentry kind="output" path="class"/>
 </classpath>
