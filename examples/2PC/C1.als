@@ -1,7 +1,18 @@
 open util/boolean
 
 /* LTS signatures */
-abstract sig Act {}
+abstract sig Sort {}
+
+sig Var {}
+
+// base name for an action
+abstract sig BaseName {}
+
+// concrete action
+abstract sig Act {
+	baseName : one BaseName,
+	params : seq Sort
+}
 
 abstract sig State {
 	init : Bool,
@@ -35,6 +46,9 @@ one sig Root extends Formula {} {
 fact {
 	// all formulas must be a sub-formula of the root
 	all f : Formula | f in Root.*children
+
+	// root appears once
+	no Root.^children & Root
 }
 
 sig Not extends Formula {
@@ -50,30 +64,97 @@ sig And, Implies, Or extends Formula {
 	children = left + right
 }
 
-sig OnceAct extends Formula {
-	act : Act
+sig EqualsVar extends Formula {
+	left : Var,
+	right : Var
 } {
 	no children
+}
+
+/*
+sig OnceAct extends Formula {
+	oact : Act
+} {
+	no children
+}*/
+
+sig OnceVar extends Formula {
+	base : BaseName,
+	ovars : seq Var
+} {
+	no children
+}
+
+fact {
+	// TODO this actually makes search time slower?
+	// do not allow free vars in formulas
+	//all ov : OnceVar, v : ov.ovars.elems | some f : Forall | f.var = v
+	//all ev : EqualsVar | some f : Forall | f.var = ev.left
+	//all ev : EqualsVar | some f : Forall | f.var = ev.right
+}
+
+sig Forall extends Formula {
+	var : Var,
+	sort : Sort,
+	matrix : Formula
+} {
+	children = matrix
+}
+fact {
+	// do not quantify over a variable that's already in scope
+	all f1, f2 : Forall | (f2 in f1.^children) implies not (f1.var = f2.var)
 }
 
 sig TT, FF extends Formula {} {
 	no children
 }
+fact {
+	// we only need TT and FF as top level formulas
+	//(TT + FF) in Root.children
+}
 
 
-/* formula semantics, i.e. when t |= f, where t is a transition and f is a formula */
+sig Env {
+	maps : set(Var->Sort)
+}
+one sig EmptyEnv extends Env {} {
+	no maps
+}
+fact {
+	// Env.maps is a function
+	all v : Var, s,t : Sort | (v->s in Env.maps and v->t in Env.maps) implies s = t
+}
+
+/* formula semantics, i.e. when: e |- t |= f, where e is an environment, t is a transition, and f is a formula */
 one sig Semantics {
-	satisfies : set (Transition -> Formula)
+	satisfies : set (Env -> Transition -> Formula)
 } {
-	all t : Transition, f : Root | t->f in satisfies iff t->f.children in satisfies
-	all t : Transition, f : TT | t->f in satisfies
-	all t : Transition, f : FF | t->f not in satisfies
-	all t : Transition, f : Not | t->f in satisfies iff (t->f.child not in satisfies)
-	all t : Transition, f : And | t->f in satisfies iff (t->f.left in satisfies and t->f.right in satisfies)
-	all t : Transition, f : Implies | t->f in satisfies iff (t->f.left in satisfies implies t->f.right in satisfies)
-	all t : Transition, f : Or | t->f in satisfies iff (t->f.left in satisfies or t->f.right in satisfies)
-	all t : Transition, f : OnceAct | t->f in satisfies iff
-		((f.act = t.act) or (some predTransitions[t] and predTransitions[t]->f in satisfies))
+	all e : Env, t : Transition, f : Root | e->t->f in satisfies iff e->t->f.children in satisfies
+	all e : Env, t : Transition, f : TT | e->t->f in satisfies
+	all e : Env, t : Transition, f : FF | e->t->f not in satisfies
+	all e : Env, t : Transition, f : Not | e->t->f in satisfies iff (e->t->f.child not in satisfies)
+	all e : Env, t : Transition, f : And | e->t->f in satisfies iff (e->t->f.left in satisfies and e->t->f.right in satisfies)
+	all e : Env, t : Transition, f : Implies | e->t->f in satisfies iff
+		(e->t->f.left in satisfies implies e->t->f.right in satisfies)
+	all e : Env, t : Transition, f : Or | e->t->f in satisfies iff (e->t->f.left in satisfies or e->t->f.right in satisfies)
+	all e : Env, t : Transition, f : EqualsVar | e->t->f in satisfies iff
+		(some v : Sort | f.left->v in e.maps and f.right->v in e.maps)
+	//all e : Env, t : Transition, f : OnceAct | e->t->f in satisfies iff
+	//	((t.act = f.oact) or (some predTransitions[t] and e->predTransitions[t]->f in satisfies))
+	all e : Env, t : Transition, f : OnceVar | e->t->f in satisfies iff
+		(transitionEquals[e, t, f] or (some predTransitions[t] and e->predTransitions[t]->f in satisfies))
+	all e : Env, t : Transition, f : Forall | e->t->f in satisfies iff
+		(all x : f.sort | some e' : Env | pushEnv[e',e,f.var,x] and e'->t->f.matrix in satisfies)
+}
+
+pred transitionEquals[e : Env, t : Transition, f : OnceVar] {
+	t.act.baseName = f.base and
+	all i : (t.act.params.inds + f.ovars.inds) |
+		let m = f.ovars[i]->t.act.params[i] | some m and m in e.maps
+}
+
+pred pushEnv[env', env : Env, v : Var, x : Sort] {
+	env'.maps = env.maps + {v->x}
 }
 
 
@@ -81,16 +162,60 @@ one sig Semantics {
 run {
 	// find a formula that separates "good" transitions from "bad" ones. we assume that the PI state is a sink,
 	// i.e. the PI state has no outgoing transitions.
-	all t : Transition | (t.dst.error = False) iff (t->Root in Semantics.satisfies)
+	all t : Transition | (t.dst.error = False) iff (EmptyEnv->t->Root in Semantics.satisfies)
 	minsome children
-} for 10 Formula
+} for
+//7 Formula,
+//exactly 10 Formula, 2 Forall, 2 Implies, 2 Not, 1 EqualsVar,
+exactly 7 Formula,
+exactly 2 Var, exactly 3 Env, 1 seq
+, exactly 3 RMs
 
-one sig SndPrepareXrm1 extends Act {} {}
-one sig RcvCommitXrm2 extends Act {} {}
-one sig RcvCommitXrm1 extends Act {} {}
-one sig SndPrepareXrm2 extends Act {} {}
-one sig RcvAbortXrm1 extends Act {} {}
-one sig RcvAbortXrm2 extends Act {} {}
+
+sig RMs extends Sort {} {}
+one sig rm1 extends RMs {} {}
+one sig rm2 extends RMs {} {}
+
+fact {
+	// sort elements are not allowed in formulas
+	rm1 not in (Root.*children).sort
+	rm2 not in (Root.*children).sort
+}
+
+one sig SndPrepare extends BaseName {} {}
+one sig RcvCommit extends BaseName {} {}
+one sig RcvAbort extends BaseName {} {}
+
+one sig SndPrepareXrm1 extends Act {} {
+	baseName = SndPrepare
+	params.first = rm1
+	#params = 1
+}
+one sig RcvCommitXrm2 extends Act {} {
+	baseName = RcvCommit
+	params.first = rm2
+	#params = 1
+}
+one sig RcvCommitXrm1 extends Act {} {
+	baseName = RcvCommit
+	params.first = rm1
+	#params = 1
+}
+one sig SndPrepareXrm2 extends Act {} {
+	baseName = SndPrepare
+	params.first = rm2
+	#params = 1
+}
+one sig RcvAbortXrm1 extends Act {} {
+	baseName = RcvAbort
+	params.first = rm1
+	#params = 1
+}
+one sig RcvAbortXrm2 extends Act {} {
+	baseName = RcvAbort
+	params.first = rm2
+	#params = 1
+}
 
 one sig PI extends State {} {
 	init = False
