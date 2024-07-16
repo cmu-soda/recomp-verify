@@ -123,6 +123,11 @@ SafetyStateInvC3 ==
     /\ (\E rm \in RMs : onceSndAbort[rm]) => (\A rm \in RMs : ~onceSndCommit[rm])
     /\ (\E rm \in RMs : onceSndCommit[rm]) => (\A rm \in RMs : onceRcvPrepare[rm])
 
+\* Invariant (pos trace) check
+CandSep ==
+    /\ (\E Var1 \in RMs : onceRcvCommit[Var1]) => (\A Var1 \in RMs : onceSndPrepare[Var1])
+    /\ (\E Var1 \in RMs : onceRcvAbort[Var1]) => (\A Var1 \in RMs : ~(onceRcvCommit[Var1]))
+
 (*
 \* IndInv version with ENABLED
 IndInv ==

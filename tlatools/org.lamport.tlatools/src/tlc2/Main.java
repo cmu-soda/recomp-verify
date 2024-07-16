@@ -6,6 +6,7 @@ import cmu.isr.ts.LTS;
 import cmu.isr.ts.lts.ltsa.FSPWriter;
 import recomp.Composition;
 import recomp.Decomposition;
+import recomp.FormulaSeparation;
 import recomp.RecompVerify;
 import recomp.WeakestAssumption;
 
@@ -23,12 +24,16 @@ public class Main {
     }
     
     public static void calc(String[] args) {
-    	if (args.length >= 2) {
+    	if (args.length >= 4) {
     		final String tla = args[0];
     		final String cfg = args[1];
-    		final boolean decompose = hasFlag(args, "--decomp");
-    		final boolean weakestAssumption = hasFlag(args, "--wa");
+    		final String tlaComp = args[2];
+    		final String cfgComp = args[3];
+    		FormulaSeparation.isCandSepInvariant(tla, cfg, tlaComp, cfgComp);
     		
+    		//final boolean decompose = hasFlag(args, "--decomp");
+    		//final boolean weakestAssumption = hasFlag(args, "--wa");
+    		/*
     		if (decompose) {
     			// write a config without any invariants / properties
     	    	final String noInvsCfg = "no_invs.cfg";
@@ -60,7 +65,7 @@ public class Main {
         		
         		final String recompStrategy = custom ? "CUSTOM" : naive ? "NAIVE" : "HEURISTIC";
         		RecompVerify.recompVerify(tla, cfg, recompStrategy, recompFile, verbose);
-    		}
+    		}*/
     	}
     	
     	// invalid args, display usage

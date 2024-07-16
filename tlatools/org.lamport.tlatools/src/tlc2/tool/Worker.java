@@ -86,13 +86,13 @@ public final class Worker extends IdThread implements IWorker, INextStateFunctor
 		this.raf = new BufferedRandomAccessFile(filename + TLCTrace.EXT, "rw");
 	}
 	
-	private boolean isSuccStateBad(final TLCState currState, final TLCState succState) throws IOException, WorkerException, Exception {
-		final long key = succState.fingerPrint();
+	private boolean isStateBad(final TLCState state) throws IOException, WorkerException, Exception {
+		final long key = state.fingerPrint();
 		if (isBadState.containsKey(key)) {
 			return isBadState.get(key);
 		}
 		
-		final boolean currStateIsBad = this.doNextCheckInvariants(currState, succState) || this.doCheckImpliedOneState(succState);
+		final boolean currStateIsBad = this.doNextCheckInvariants(state) || this.doCheckImpliedOneState(state);
 		isBadState.put(key, currStateIsBad);
 		return currStateIsBad;
 	}
@@ -139,7 +139,7 @@ public final class Worker extends IdThread implements IWorker, INextStateFunctor
                     	final StateVec succ = this.tool.getNextStates(action, curState);
                     	for (int j = 0; j < succ.size(); ++j) {
                             final TLCState nextState = succ.elementAt(j);
-        					final boolean isGoodState = !isSuccStateBad(curState, nextState);
+        					final boolean isGoodState = !isStateBad(nextState);
                             LTSBuilder ltsBuilder = TLC.currentLTSBuilder();
                             ltsBuilder.addState(nextState);
                             if (isGoodState) {
@@ -147,6 +147,10 @@ public final class Worker extends IdThread implements IWorker, INextStateFunctor
             				}
             				else {
             					ltsBuilder.addTransitionToErr(curState, action);
+            					
+        						// we found a violation of: Inv => CandSep
+        						// dequeue everything and return as fast as possible
+        						this.squeue.sDequeue((int) this.squeue.size());
             				}
                     	}
                 	}
@@ -497,10 +501,15 @@ public final class Worker extends IdThread implements IWorker, INextStateFunctor
     				// The state is inModel, unseen and neither invariants
     				// nor implied actions are violated. It is thus eligible
     				// for further processing by other workers.
-    				final boolean isGoodState = !isSuccStateBad(curState, succState);
+    				final boolean isGoodState = !isStateBad(succState);
     				if (isGoodState || TLC.checkBadStates()) {
     					this.squeue.sEnqueue(succState);
     				}
+					else {
+						// we found a violation of: Inv => CandSep
+						// dequeue everything and return as fast as possible
+						this.squeue.sDequeue((int) this.squeue.size());
+					}
     			}
     			//StaticTimer.exit();
         	}
@@ -561,41 +570,11 @@ public final class Worker extends IdThread implements IWorker, INextStateFunctor
 		return seen;
 	}
 
-	private final boolean doNextCheckInvariants(final TLCState curState, final TLCState succState) throws IOException, WorkerException, Exception {
-        int k = 0;
-		try
-        {
-			for (k = 0; k < this.tool.getInvariants().length; k++)
-            {
-                if (!tool.isValid(this.tool.getInvariants()[k], succState))
-                {
-                    // We get here because of invariant violation:
-                	if (TLCGlobals.continuation) {
-                        synchronized (this.tlc)
-                        {
-                            // idardik
-                            /*
-							MP.printError(EC.TLC_INVARIANT_VIOLATED_BEHAVIOR,
-									this.tool.getInvNames()[k]);
-							this.tlc.trace.printTrace(curState, succState);
-							return false;
-                            */
-							return true;
-                        }
-                	} else {
-                        // idardik
-                        /*
-						return this.doNextSetErr(curState, succState, false,
-								EC.TLC_INVARIANT_VIOLATED_BEHAVIOR, this.tool.getInvNames()[k]);
-                                */
-                        return true;
-                	}
-				}
+	private final boolean doNextCheckInvariants(final TLCState state) throws IOException, WorkerException, Exception {
+		for (int k = 0; k < this.tool.getInvariants().length; k++) {
+			if (!tool.isValid(this.tool.getInvariants()[k], state)) {
+				return true;
 			}
-        } catch (Exception e)
-        {
-			this.tlc.doNextEvalFailed(curState, succState, EC.TLC_INVARIANT_EVALUATION_FAILED,
-					this.tool.getInvNames()[k], e);
 		}
 		return false;
 	}

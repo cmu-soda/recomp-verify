@@ -31,7 +31,7 @@ Next ==
 \/ SndPrepare(rm)
 \/ RcvCommit(rm)
 \/ RcvAbort(rm)
-\*\/ SilentAbort(rm)
+\/ SilentAbort(rm)
 
 Spec == (Init /\ [][Next]_vars)
 
