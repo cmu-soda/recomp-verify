@@ -384,6 +384,8 @@ public class FormulaSeparation {
 			+ "\n"
 			+ "\n"
 			+ "\n"
+			// TODO generate this part. only include actions that are part of the global alph, so
+			// SilentAbort should not be part of the formula we synthesize (i.e. it shouldn't be an act)
 			+ "/* example traces */\n"
 			+ "\n"
 			+ "one sig rm1, rm2 extends Atom {}\n"
