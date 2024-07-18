@@ -7,7 +7,8 @@ vars == <<msgs, tmState, onceSilentAbort, onceRcvAbort, tmPrepared, rmState, onc
 
 RMs == {"rm1","rm2"}
 
-CandSep == \A Var1 \in RMs : (onceRcvAbort[Var1]) => (\A Var0 \in RMs : ~(onceRcvCommit[Var0]))
+CandSep ==
+\A Var1 \in RMs : (onceRcvAbort[Var1]) => (\A Var0 \in RMs : ~(onceRcvCommit[Var0]))
 
 Message == ([type : {"Prepared"},theRM : RMs] \cup [type : {"Commit","Abort"}])
 

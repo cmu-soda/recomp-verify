@@ -19,6 +19,8 @@ public class Main {
     		final String tlaComp = args[2];
     		final String cfgComp = args[3];
     		final String formula = FormulaSeparation.synthesizeSepInvariant(tlaSys, cfgSys, tlaComp, cfgComp);
+    		
+    		System.out.println("The following formula is a separating assumption:");
     		System.out.println(formula);
     	}
     	else {

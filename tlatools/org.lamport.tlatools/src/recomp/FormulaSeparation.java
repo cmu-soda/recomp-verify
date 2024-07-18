@@ -22,6 +22,7 @@ public class FormulaSeparation {
 	public static String synthesizeSepInvariant(final String tlaSys, final String cfgSys, final String tlaComp, final String cfgComp) {
     	SymbolTable.init();
     	
+    	// TODO the config won't work if there's CONSTANTs
     	// config for producing positive traces
     	final String cfgPosTraces = "pos_traces.cfg";
     	Utils.writeFile(cfgPosTraces, "SPECIFICATION Spec\nINVARIANT CandSep");
@@ -29,6 +30,7 @@ public class FormulaSeparation {
     	//final List<String> rawComponents = Decomposition.decompAll(tla, cfg);
     	//final List<String> components = Composition.symbolicCompose(tla, cfg, "CUSTOM", "recomp_map.csv", rawComponents);
     	
+    	// TODO auto generate this instead
     	final String initPosTrace = "one sig PT1 extends PosTrace {} {\n"
     			+ "	 lastIdx = T3\n"
     			+ "	 (T0->SndPreparerm1 + T1->SndPreparerm2 + T2->RcvCommitrm2 + T3->RcvCommitrm1) in path\n"
@@ -39,36 +41,52 @@ public class FormulaSeparation {
     	List<String> invariants = new ArrayList<>();
     	boolean formulaSeparates = false;
     	
+    	int round = 1;
     	while (!formulaSeparates) {
-    		final String invariant = invariants.isEmpty() ? "TRUE" : "(" + String.join(") /\\ (", invariants) + ")";
+    		System.out.println("Round " + round);
+    		
+    		// generate a negative trace for this round; we will generate a formula (assumption) that eliminates
+    		// the negative trace
+    		final String invariant = prettyConjuncts(invariants);
         	final String tlaCompHV = writeHistVarsSpec(tlaComp, cfgComp, invariant, true);
         	final String negTrace = isCandSepInvariant(tlaCompHV, cfgComp, tlaComp, cfgComp, "NT", "NegTrace");
     		formulaSeparates = negTrace.equals("TRUE");
+
+    		// use the negative trace and all existing positive traces to generate a formula
+			// keep generating positive traces until the formula turns into an invariant
     		boolean isInvariant = false;
-    		
-    		if (!formulaSeparates && !isInvariant) {
-    			// turn the formula into an invariant
+    		while (!formulaSeparates && !isInvariant) {
     			final String formula = synthesizeFormula(negTrace, posTraces);
     			
+    			// generate positive traces until the formula becomes an invariant
     			final int ptNum = posTraces.size() + 1;
     			final String ptName = "PT" + ptNum;
     	    	final String tlaSysHV = writeHistVarsSpec(tlaSys, cfgSys, formula, false);
     			final String posTrace = isCandSepInvariant(tlaSysHV, cfgPosTraces, tlaComp, cfgComp, ptName, "PosTrace");
     			isInvariant = posTrace.equals("TRUE");
+    			
+    			System.out.println("Synthesized: " + formula);
     			if (isInvariant) {
     				invariants.add(formula);
-    				System.out.println("found new invariant: " + formula);
+    				System.out.println("The formula is an invariant! Moving to the next round.");
     			}
     			else {
     				posTraces.add(posTrace);
-    				System.out.println("attempting to strengthen to be an invariant: " + formula);
-        			System.out.println("posTrace:\n" + posTrace);
     			}
-				System.out.println();
     		}
+    		++round;
+			System.out.println();
     	}
     	
-    	return invariants.isEmpty() ? "TRUE" : "(" + String.join(") /\\ (", invariants) + ")";
+    	return prettyConjuncts(invariants);
+	}
+	
+	private static String prettyConjuncts(final List<String> conjuncts) {
+		if (conjuncts.isEmpty()) {
+			return "TRUE";
+		}
+		final String delim = "\n/\\ ";
+		return "/\\ " + String.join(delim, conjuncts);
 	}
 	
 	private static String synthesizeFormula(final String negTrace, final List<String> posTraces) {
@@ -93,7 +111,6 @@ public class FormulaSeparation {
 			return "";
 		}
 		
-		// is the formula an invariant?
 		return formulaBuilder.toString();
 	}
 	
@@ -141,7 +158,7 @@ public class FormulaSeparation {
 				.map(d -> {
 					// TODO fix this ugly hack
 					if (d.getName().toString().equals("RMs")) {
-						return d.toTLA() + "\n\nCandSep == " + candSep;
+						return d.toTLA() + "\n\nCandSep ==\n" + candSep;
 					}
 					return d.toTLA();
 				 })
