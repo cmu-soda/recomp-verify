@@ -209,6 +209,7 @@ one sig T0, T1, T2, T3 extends Idx {}
 fact {
 	first = T0
 	next = T0->T1 + T1->T2 + T2->T3
+ no OnceVar.baseName & SilentAbort
 }
 
 one sig NT extends NegTrace {} {
@@ -222,17 +223,13 @@ one sig PT1 extends PosTrace {} {
 }
 one sig PT2 extends PosTrace {} {
   lastIdx = T0
-  (T0->SilentAbortrm2) in path
-}
-one sig PT3 extends PosTrace {} {
-  lastIdx = T0
   (T0->RcvAbortrm1) in path
 }
-one sig PT4 extends PosTrace {} {
+one sig PT3 extends PosTrace {} {
   lastIdx = T1
   (T0->SndPreparerm1 + T1->RcvAbortrm1) in path
 }
-one sig PT5 extends PosTrace {} {
+one sig PT4 extends PosTrace {} {
   lastIdx = T2
   (T0->SndPreparerm1 + T1->RcvAbortrm1 + T2->SndPreparerm2) in path
 }

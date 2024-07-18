@@ -3,7 +3,9 @@ package recomp;
 import java.io.BufferedReader;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -127,21 +129,25 @@ public class FormulaSeparation {
     	
 		TLC tlc = new TLC();
 		tlc.initialize(tla, cfg);
-		
-		final Set<String> onceVars = tlc.actionsInSpec()
-				.stream()
-				.map(v -> "once" + v)
-				.collect(Collectors.toSet());
 
     	final FastTool ft = (FastTool) tlc.tool;
 		final String moduleName = tlc.getModelName();
 		final ModuleNode mn = ft.getModule(moduleName);
-		List<OpDefNode> moduleNodes = Utils.toArrayList(mn.getOpDefs())
+		final List<OpDefNode> moduleNodes = Utils.toArrayList(mn.getOpDefs())
 				.stream()
 				// only retain module for the .tla file
 				.filter(d -> moduleName.equals(d.getOriginallyDefinedInModuleNode().getName().toString()))
 				.filter(d -> !d.getName().toString().equals("vars")) // remove the vars decl; we insert this manually
 				.collect(Collectors.toList());
+		
+		// obtain a map of: action -> List(param type)
+		Map<String, List<String>> actionParamTypes = TLC.getTransitionRelationNode(ft, tlc, "Next").actionParamTypes(tlc.actionsInSpec());
+		
+		// create the history vars that represent "once(action)"
+		final Set<String> onceVars = tlc.actionsInSpec()
+				.stream()
+				.map(v -> "once" + v)
+				.collect(Collectors.toSet());
 		
 		final String specBody = moduleNodes
 				.stream()
@@ -151,7 +157,7 @@ public class FormulaSeparation {
 						d.addOnceVars(onceVars,candSepInActions);
 					}
 					else if (dname.equals("Init")) {
-						d.addOnceInitVars(onceVars);
+						d.addOnceInitVars(onceVars, actionParamTypes);
 					}
 					return d;
 				 })
@@ -199,6 +205,7 @@ public class FormulaSeparation {
 	
 	public static String isCandSepInvariant(final String tla, final String cfg,
 			final String tlaAlphabetSpec, final String cfgAlphabetSpec, final String name, final String ext) {
+		// TODO cache the tlc object so we don't have to keep recomputing it
     	TLC tlc = new TLC();
     	tlc.modelCheck(tla, cfg);
     	final LTS<Integer, String> lts = tlc.getLTSBuilder().toIncompleteDetAutIncludingAnErrorState();
@@ -452,6 +459,8 @@ public class FormulaSeparation {
 			+ "fact {\n"
 			+ "	first = T0\n"
 			+ "	next = T0->T1 + T1->T2 + T2->T3\n"
+			// TODO decide this dynamically
+			+ " no OnceVar.baseName & SilentAbort\n"
 			+ "}\n"
 			+ "";
 }

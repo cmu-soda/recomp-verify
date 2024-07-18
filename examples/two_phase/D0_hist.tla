@@ -10,16 +10,16 @@ RMs == {"rm1","rm2"}
 CandSep ==
 /\ \A Var1 \in RMs : (onceRcvCommit[Var1]) => (onceSndPrepare[Var1])
 /\ (\E Var1 \in RMs : onceRcvCommit[Var1]) => (\A Var1 \in RMs : onceSndPrepare[Var1])
-/\ \A Var1 \in RMs : (onceRcvAbort[Var1]) => (\A Var0 \in RMs : ~(onceRcvCommit[Var0]))
+/\ (\E Var1 \in RMs : onceRcvCommit[Var1]) => (\A Var1 \in RMs : ~(onceRcvAbort[Var1]))
 
 Message == ([type : {"Prepared"},theRM : RMs] \cup [type : {"Commit","Abort"}])
 
 Init ==
 /\ rmState = [rm \in RMs |-> "working"]
-/\ onceSilentAbort = [ rm \in RMs |-> FALSE]
-/\ onceRcvAbort = [ rm \in RMs |-> FALSE]
-/\ onceRcvCommit = [ rm \in RMs |-> FALSE]
-/\ onceSndPrepare = [ rm \in RMs |-> FALSE]
+/\ onceSilentAbort = [ x0 \in RMs |-> FALSE]
+/\ onceRcvAbort = [ x0 \in RMs |-> FALSE]
+/\ onceRcvCommit = [ x0 \in RMs |-> FALSE]
+/\ onceSndPrepare = [ x0 \in RMs |-> FALSE]
 
 SndPrepare(rm) ==
 /\ rmState[rm] = "working"

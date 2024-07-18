@@ -8,7 +8,7 @@ vars == <<msgs, tmState, onceSilentAbort, onceRcvAbort, tmPrepared, rmState, onc
 RMs == {"rm1","rm2"}
 
 CandSep ==
-\A Var1 \in RMs : (onceRcvAbort[Var1]) => (\A Var0 \in RMs : ~(onceRcvCommit[Var0]))
+(\E Var1 \in RMs : onceRcvCommit[Var1]) => (\A Var1 \in RMs : ~(onceRcvAbort[Var1]))
 
 Message == ([type : {"Prepared"},theRM : RMs] \cup [type : {"Commit","Abort"}])
 
@@ -17,13 +17,13 @@ Init ==
 /\ rmState = [rm \in RMs |-> "working"]
 /\ tmState = "init"
 /\ tmPrepared = {}
-/\ onceSilentAbort = [ rm \in RMs |-> FALSE]
-/\ onceRcvAbort = [ rm \in RMs |-> FALSE]
-/\ onceRcvPrepare = [ rm \in RMs |-> FALSE]
-/\ onceRcvCommit = [ rm \in RMs |-> FALSE]
-/\ onceSndCommit = [ rm \in RMs |-> FALSE]
-/\ onceSndAbort = [ rm \in RMs |-> FALSE]
-/\ onceSndPrepare = [ rm \in RMs |-> FALSE]
+/\ onceSilentAbort = [ x0 \in RMs |-> FALSE]
+/\ onceRcvAbort = [ x0 \in RMs |-> FALSE]
+/\ onceRcvPrepare = [ x0 \in RMs |-> FALSE]
+/\ onceRcvCommit = [ x0 \in RMs |-> FALSE]
+/\ onceSndCommit = [ x0 \in RMs |-> FALSE]
+/\ onceSndAbort = [ x0 \in RMs |-> FALSE]
+/\ onceSndPrepare = [ x0 \in RMs |-> FALSE]
 
 SndPrepare(rm) ==
 /\ msgs' = (msgs \cup {[type |-> "Prepared",theRM |-> rm]})

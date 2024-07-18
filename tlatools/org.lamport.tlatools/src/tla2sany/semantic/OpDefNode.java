@@ -30,11 +30,13 @@
 
 package tla2sany.semantic;
 
+import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.Hashtable;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -682,11 +684,7 @@ public class OpDefNode extends OpDefOrDeclNode
 	  this.body = new OpApplNode(UniqueString.of("$ConjList"), ops, this.stn, null);
   }
   
-
-  public void addOnceInitVars(final Set<String> onceVars) {
-	  // TODO fix this hardcoded hack
-	  final String suffix = " = [ rm \\in RMs |-> FALSE]";
-	  
+  public void addOnceInitVars(final Set<String> onceVars, final Map<String, List<String>> actionParamTypes) {
 	  // create a list of conjuncts (operands)
 	  final int numNewOps = onceVars.size();
 	  int idx = 0;
@@ -705,10 +703,22 @@ public class OpDefNode extends OpDefOrDeclNode
 		  }
 	  }
 	  
-	  // add new conjuncts
-	  for (final String v : onceVars) {
-		  final String conj = v + suffix;
-		  ops[idx++] = new RawTlaNode(conj, this.stn);
+	  // add new conjuncts (one for each "once" var)
+	  for (final String onceVar : onceVars) {
+		  final String action = onceVar.replaceFirst("once", "");
+		  final List<String> paramTypes = actionParamTypes.get(action);
+		  StringBuilder initBuilder = new StringBuilder();
+		  initBuilder.append(onceVar).append(" = ");
+		  for (int i = 0; i < paramTypes.size(); ++i) {
+			  final String paramType = paramTypes.get(i);
+			  final String qvName = "x" + i;
+			  initBuilder.append("[ ").append(qvName).append(" \\in ").append(paramType).append(" |-> ");
+		  }
+		  initBuilder.append("FALSE");
+		  for (int i = 0; i < paramTypes.size(); ++i) {
+			  initBuilder.append("]");
+		  }
+		  ops[idx++] = new RawTlaNode(initBuilder.toString(), this.stn);
 	  }
 	  
 	  // change the child to be the new conjunct

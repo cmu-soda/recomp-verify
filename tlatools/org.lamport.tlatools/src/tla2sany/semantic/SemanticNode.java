@@ -72,6 +72,19 @@ public abstract class SemanticNode
     }
   }
   
+  public final Map<String, List<String>> actionParamTypes(final Set<String> allActions) {
+	  Map<String, List<String>> apt = new HashMap<>();
+	  Map<String, String> emptyEnv = new HashMap<>();
+	  actionParamTypes(allActions, emptyEnv, apt);
+	  return apt;
+  }
+  
+  protected void actionParamTypes(final Set<String> allActions, Map<String,String> env, Map<String, List<String>> apt) {
+	  for (SemanticNode child : getChildren()) {
+		  child.actionParamTypes(allActions, env, apt);
+	  }
+  }
+  
   public Map<String,String> collectTypesFromTypeOK() {
 	  // merge all maps
 	  return Utils.toArrayList(getChildren())

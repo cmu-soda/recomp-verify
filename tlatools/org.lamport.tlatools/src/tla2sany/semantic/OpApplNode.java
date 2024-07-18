@@ -235,6 +235,43 @@ public class OpApplNode extends ExprNode implements ExploreNode {
   }
   
   @Override
+  protected void actionParamTypes(final Set<String> allActions, Map<String,String> env, Map<String, List<String>> apt) {
+	  final SymbolNode opNode = this.getOperator();
+	  final String opKey = opNode.getName().toString();
+	  
+	  // if we find a quantifier, add the parameter and its type to the environment
+	  if (isBoundedQuant(opKey)) {
+		  for (int i = 0; i < this.ranges.length; ++i) {
+			  final FormalParamNode[] params = this.boundedBoundSymbols[i];
+			  final ExprNode paramType = this.ranges[i];
+			  for (final FormalParamNode param : params) {
+				  final String key = param.getName().toString();
+				  final String val = paramType.toTLA(false);
+				  env.put(key, val);
+			  }
+		  }
+	  }
+	  // if we're in an action node then map the action to its param types
+	  else if (allActions.contains(opKey)) {
+		  final String actionName = opKey;
+		  if (!apt.containsKey(actionName)) {
+			  apt.put(actionName, new ArrayList<>());
+		  }
+		  
+		  for (final ExprOrOpArgNode param : this.operands) {
+			  final String paramEnvKey = param.toTLA(false);
+			  Utils.assertTrue(env.containsKey(paramEnvKey), "Found action with an unbound parameter!");
+			  final String paramType = env.get(paramEnvKey);
+			  apt.get(actionName).add(paramType);
+		  }
+	  }
+	  
+	  for (SemanticNode child : getChildren()) {
+		  child.actionParamTypes(allActions, env, apt);
+	  }
+  }
+  
+  @Override
   public Map<String,String> collectTypesFromTypeOK() {
 	  final SymbolNode opNode = this.getOperator();
 	  final String opKey = opNode.getName().toString();
