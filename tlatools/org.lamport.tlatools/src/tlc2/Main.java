@@ -11,25 +11,30 @@ import recomp.RecompVerify;
 import recomp.WeakestAssumption;
 
 public class Main {
-    public static void main(String[] args) throws Exception {
-    	try {
-    		calc(args);
-    	}
-    	catch (Exception e) {
-    		e.printStackTrace();
-    	}
-    	finally {
-    		System.exit(0);
-    	}
-    }
-    
-    public static void calc(String[] args) {
+    public static void main(String[] args) {
+    	//calc(args);
     	if (args.length >= 4) {
-    		final String tla = args[0];
-    		final String cfg = args[1];
+    		final String tlaSys = args[0];
+    		final String cfgSys = args[1];
     		final String tlaComp = args[2];
     		final String cfgComp = args[3];
-    		FormulaSeparation.isCandSepInvariant(tla, cfg, tlaComp, cfgComp);
+    		final String formula = FormulaSeparation.synthesizeSepInvariant(tlaSys, cfgSys, tlaComp, cfgComp);
+    		System.out.println(formula);
+    	}
+    	else {
+    		System.out.println("usage: recomp-verify <spec> <cfg>");
+    	}
+    	System.exit(0);
+    }
+    
+    private static void calc(String[] args) {
+    	if (args.length >= 4) {
+    		final String tlaSys = args[0];
+    		final String cfgSys = args[1];
+    		final String tlaComp = args[2];
+    		final String cfgComp = args[3];
+    		final String output = FormulaSeparation.isCandSepInvariant(tlaSys, cfgSys, tlaComp, cfgComp, "", "");
+    		System.out.println(output);
     		
     		//final boolean decompose = hasFlag(args, "--decomp");
     		//final boolean weakestAssumption = hasFlag(args, "--wa");

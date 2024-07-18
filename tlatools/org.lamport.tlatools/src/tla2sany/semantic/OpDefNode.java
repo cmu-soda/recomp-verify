@@ -34,6 +34,8 @@ import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.Hashtable;
 import java.util.Iterator;
+import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.w3c.dom.Document;
@@ -624,6 +626,93 @@ public class OpDefNode extends OpDefOrDeclNode
 				  .collect(Collectors.joining(","));
 		  return name + "(" + params + ")" + defStr + body;
 	  }
+  }
+  
+  public void addOnceVars(final Set<String> onceVars, boolean candSep) {
+	  final String name = this.getName().toString();
+	  final String onceName = "once" + name;
+	  
+	  // create an "update once" expression
+	  String updateOnce = "";
+	  final boolean hasParams = this.params != null && this.params.length > 0;
+	  if (hasParams) {
+		  final String strParams = Utils.toArrayList(this.params)
+				  .stream()
+				  .map(p -> p.getName().toString())
+				  .collect(Collectors.joining("]["));
+		  updateOnce = onceName + "' = [" + onceName + " EXCEPT![" + strParams + "] = TRUE]";
+	  }
+	  else {
+		  updateOnce = onceName + "' = TRUE";
+	  }
+	  
+	  // create a list of conjuncts (operands)
+	  final int numNewOps = candSep ? 3 : 2;
+	  int idx = 0;
+	  ExprOrOpArgNode[] ops = new ExprOrOpArgNode[1 + numNewOps];
+	  ops[idx++] = this.getBody();
+	  
+	  // if the body of this def node is a conj list, just merge the new conjuncts with the existing list
+	  if (this.getBody() instanceof OpApplNode) {
+		  final OpApplNode oan = (OpApplNode) this.getBody();
+		  final boolean bodyIsConj = oan.getOperator().getName().toString().equals("$ConjList");
+		  if (bodyIsConj) {
+			  ops = new ExprOrOpArgNode[oan.operands.length + numNewOps];
+			  for (idx = 0; idx < oan.operands.length; ++idx) {
+				  ops[idx] = oan.operands[idx];
+			  }
+		  }
+	  }
+	  
+	  // once frame condition
+	  final String onceUnchanged = onceVars
+			  .stream()
+			  .filter(v -> !v.equals(onceName))
+			  .collect(Collectors.joining(", "));
+	  final String onceFrame = "UNCHANGED<<" + onceUnchanged + ">>";
+	  
+	  // add new conjuncts
+	  ops[idx + 0] = new RawTlaNode(updateOnce, this.stn);
+	  ops[idx + 1] = new RawTlaNode(onceFrame, this.stn);
+	  if (candSep) {
+		  ops[idx + 2] = new RawTlaNode("CandSep'", this.stn);
+	  }
+	  
+	  // change the child to be the new conjunct
+	  this.body = new OpApplNode(UniqueString.of("$ConjList"), ops, this.stn, null);
+  }
+  
+
+  public void addOnceInitVars(final Set<String> onceVars) {
+	  // TODO fix this hardcoded hack
+	  final String suffix = " = [ rm \\in RMs |-> FALSE]";
+	  
+	  // create a list of conjuncts (operands)
+	  final int numNewOps = onceVars.size();
+	  int idx = 0;
+	  ExprOrOpArgNode[] ops = new ExprOrOpArgNode[1 + numNewOps];
+	  ops[idx++] = this.getBody();
+	  
+	  // if the body of this def node is a conj list, just merge the new conjuncts with the existing list
+	  if (this.getBody() instanceof OpApplNode) {
+		  final OpApplNode oan = (OpApplNode) this.getBody();
+		  final boolean bodyIsConj = oan.getOperator().getName().toString().equals("$ConjList");
+		  if (bodyIsConj) {
+			  ops = new ExprOrOpArgNode[oan.operands.length + numNewOps];
+			  for (idx = 0; idx < oan.operands.length; ++idx) {
+				  ops[idx] = oan.operands[idx];
+			  }
+		  }
+	  }
+	  
+	  // add new conjuncts
+	  for (final String v : onceVars) {
+		  final String conj = v + suffix;
+		  ops[idx++] = new RawTlaNode(conj, this.stn);
+	  }
+	  
+	  // change the child to be the new conjunct
+	  this.body = new OpApplNode(UniqueString.of("$ConjList"), ops, this.stn, null);
   }
   
   

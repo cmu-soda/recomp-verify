@@ -9,8 +9,9 @@ RMs == {"rm1","rm2"}
 
 \* Neg trace check
 CandSep ==
+    /\ \A Var1 \in RMs : (onceRcvCommit[Var1]) => (onceSndPrepare[Var1])
     /\ (\E Var1 \in RMs : onceRcvCommit[Var1]) => (\A Var1 \in RMs : onceSndPrepare[Var1])
-    /\ (\E Var1 \in RMs : onceRcvAbort[Var1]) => (\A Var1 \in RMs : ~(onceRcvCommit[Var1]))
+    /\ \A Var1 \in RMs : (onceRcvAbort[Var1]) => (\A Var0 \in RMs : ~(onceRcvCommit[Var0]))
 
 Message == ([type : {"Prepared"},theRM : RMs] \cup [type : {"Commit","Abort"}])
 

@@ -67,6 +67,7 @@ public interface ASTConstants {
   public static final int QEDStepKind        = 35;
   public static final int DefStepKind        = 36;
   public static final int NumberedProofStepKind = 37;
+  public static final int RawTlaKind		 = 38;
 
 
   /*************************************************************************
@@ -110,7 +111,8 @@ public interface ASTConstants {
     /* 34 */ "NonLeafProofKind",
     /* 35 */ "QEDStepKind",
     /* 36 */ "DefStepKind",
-    /* 37 */ "NumberedProofStepKind"
+    /* 37 */ "NumberedProofStepKind",
+    /* 38 */ "RawTlaKind"
   };
 
   /* Operators */
