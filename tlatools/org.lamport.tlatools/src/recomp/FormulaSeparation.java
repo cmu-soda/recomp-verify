@@ -84,6 +84,46 @@ public class FormulaSeparation {
     	return prettyConjuncts(invariants);
 	}
 	
+	public static String isCandSepInvariant(final String tla, final String cfg,
+			final String tlaAlphabetSpec, final String cfgAlphabetSpec, final String name, final String ext) {
+    	TLC tlc = new TLC();
+    	tlc.modelCheck(tla, cfg);
+    	final LTS<Integer, String> lts = tlc.getLTSBuilder().toIncompleteDetAutIncludingAnErrorState();
+    	
+    	if (SafetyUtils.INSTANCE.ltsIsSafe(lts)) {
+    		return "TRUE";
+    	}
+    	
+		TLC tlcComp = new TLC();
+		tlcComp.initialize(tlaAlphabetSpec, cfgAlphabetSpec);
+		final Set<String> alphabet = tlcComp.actionsInSpec();
+		
+		// if candSep isn't an invariant, return a trace that should be covered by the formula
+		final List<String> trace = SafetyUtils.INSTANCE.findErrorTrace(lts)
+				.stream()
+				.filter(act -> {
+					final String abstractAct = act.replaceAll("\\..*$", "");
+					return alphabet.contains(abstractAct);
+				})
+				.collect(Collectors.toList());
+		
+		String strLastIdx = "";
+		List<String> strTimeActs = new ArrayList<>();
+		for (int i = 0; i < trace.size(); ++i) {
+			final String time = "T" + i;
+			final String act = trace.get(i).replace(".", "");
+			final String timeAct = time + "->" + act;
+			strTimeActs.add(timeAct);
+			strLastIdx = time;
+		}
+		final String strTrace = String.join(" + ", strTimeActs);
+		final String str = "one sig " + name + " extends " + ext + " {} {\n"
+				+ "  lastIdx = " + strLastIdx + "\n"
+				+ "  (" + strTrace + ") in path\n"
+				+ "}";
+		return str;
+	}
+	
 	private static String prettyConjuncts(final List<String> conjuncts) {
 		if (conjuncts.isEmpty()) {
 			return "TRUE";
@@ -226,47 +266,7 @@ public class FormulaSeparation {
         return specName;
 	}
 	
-	public static String isCandSepInvariant(final String tla, final String cfg,
-			final String tlaAlphabetSpec, final String cfgAlphabetSpec, final String name, final String ext) {
-		// TODO cache the tlc object so we don't have to keep recomputing it
-    	TLC tlc = new TLC();
-    	tlc.modelCheck(tla, cfg);
-    	final LTS<Integer, String> lts = tlc.getLTSBuilder().toIncompleteDetAutIncludingAnErrorState();
-    	
-    	if (SafetyUtils.INSTANCE.ltsIsSafe(lts)) {
-    		return "TRUE";
-    	}
-    	
-		TLC tlcComp = new TLC();
-		tlcComp.initialize(tlaAlphabetSpec, cfgAlphabetSpec);
-		final Set<String> alphabet = tlcComp.actionsInSpec();
-		
-		// if candSep isn't an invariant, return a trace that should be covered by the formula
-		final List<String> trace = SafetyUtils.INSTANCE.findErrorTrace(lts)
-				.stream()
-				.filter(act -> {
-					final String abstractAct = act.replaceAll("\\..*$", "");
-					return alphabet.contains(abstractAct);
-				})
-				.collect(Collectors.toList());
-		
-		String strLastIdx = "";
-		List<String> strTimeActs = new ArrayList<>();
-		for (int i = 0; i < trace.size(); ++i) {
-			final String time = "T" + i;
-			final String act = trace.get(i).replace(".", "");
-			final String timeAct = time + "->" + act;
-			strTimeActs.add(timeAct);
-			strLastIdx = time;
-		}
-		final String strTrace = String.join(" + ", strTimeActs);
-		final String str = "one sig " + name + " extends " + ext + " {} {\n"
-				+ "  lastIdx = " + strLastIdx + "\n"
-				+ "  (" + strTrace + ") in path\n"
-				+ "}";
-		return str;
-	}
-	
+	// TODO fix path
 	private static final String alloyFormlaInferJar = "/Users/idardik/Documents/CMU/compositional_ii/alsm-formula-synthesis/bin/alsm-formula-synthesis.jar";
 	
 	private static final String baseAlloyFormulaInfer = "open util/ordering[Idx]\n"
