@@ -4,6 +4,7 @@ import java.io.BufferedReader;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -149,7 +150,7 @@ public class FormulaSeparation {
 				.map(v -> "once" + v)
 				.collect(Collectors.toSet());
 		
-		final String specBody = moduleNodes
+		List<String> strModuleNodes = moduleNodes
 				.stream()
 				.map(d -> {
 					final String dname = d.getName().toString();
@@ -161,14 +162,36 @@ public class FormulaSeparation {
 					}
 					return d;
 				 })
-				.map(d -> {
-					// TODO fix this ugly hack
-					if (d.getName().toString().equals("RMs")) {
-						return d.toTLA() + "\n\nCandSep ==\n" + candSep;
-					}
-					return d.toTLA();
-				 })
-				.collect(Collectors.joining("\n\n"));
+				.map(d -> d.toTLA())
+				.collect(Collectors.toList());
+		
+		// add CandSep to the module definitions
+		final Set<String> allTypes = actionParamTypes
+				.values()
+				.stream()
+				.reduce((Set<String>)new HashSet<String>(),
+						(acc,l) -> Utils.union(acc, l.stream().collect(Collectors.toSet())),
+						(l1,l2) -> Utils.union(l1,l2));
+		
+		Set<OpDefNode> candSepDependencyNodes = moduleNodes
+				.stream()
+				.filter(d -> allTypes.contains(d.getName().toString()))
+				.collect(Collectors.toSet());
+		
+		for (int i = 0; i < moduleNodes.size(); ++i) {
+			final OpDefNode defNode = moduleNodes.get(i);
+			if (candSepDependencyNodes.isEmpty()) {
+				strModuleNodes.add(i, "CandSep ==\n" + candSep);
+				break;
+			}
+			else if (candSepDependencyNodes.contains(defNode)) {
+				candSepDependencyNodes.remove(defNode);
+			}
+			Utils.assertTrue(i < moduleNodes.size()-1, "Could not find a place for CandSep!");
+		}
+		
+		// construct the spec
+		final String specBody = String.join("\n\n", strModuleNodes);
 		
         final String specDecl = "--------------------------- MODULE " + specName + " ---------------------------";
         final String endModule = "=============================================================================";
