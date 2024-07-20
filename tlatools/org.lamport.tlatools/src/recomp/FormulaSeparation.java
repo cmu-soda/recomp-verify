@@ -27,6 +27,8 @@ public class FormulaSeparation {
 	private final String cfgSys;
 	private final String tlaComp;
 	private final String cfgComp;
+	private final boolean usePropFile;
+	private final String propFile;
 	private final TLC tlcSys;
 	private final TLC tlcComp;
 	private final Set<String> internalActions;
@@ -34,11 +36,14 @@ public class FormulaSeparation {
 	private final boolean verbose;
 	
 	public FormulaSeparation(final String tlaSys, final String cfgSys, final String tlaComp, final String cfgComp,
-			final List<Utils.Pair<String,String>> otherComponents) {
+			final String propFile, final List<Utils.Pair<String,String>> otherComponents) {
 		this.tlaSys = tlaSys;
 		this.cfgSys = cfgSys;
 		this.tlaComp = tlaComp;
 		this.cfgComp = cfgComp;
+		
+		this.usePropFile = !propFile.equals("none");
+		this.propFile = propFile;
 		
 		tlcSys = new TLC();
     	tlcSys.modelCheck(tlaSys, cfgSys);
@@ -70,6 +75,11 @@ public class FormulaSeparation {
     	final String cfgPosTraces = "pos_traces.cfg";
     	Utils.writeFile(cfgPosTraces, "SPECIFICATION Spec\nINVARIANT CandSep\n" + strCfgConstants);
     	
+    	// config for producing negative traces
+    	final String cfgNegTraces = "neg_traces.cfg";
+    	final String negTracesSafety = this.usePropFile ? "\nINVARIANT Safety" : "";
+    	Utils.writeFile(cfgNegTraces, String.join("\n", Utils.fileContents(cfgComp)) + negTracesSafety);
+    	
     	//final List<String> rawComponents = Decomposition.decompAll(tla, cfg);
     	//final List<String> components = Composition.symbolicCompose(tla, cfg, "CUSTOM", "recomp_map.csv", rawComponents);
     	
@@ -93,7 +103,7 @@ public class FormulaSeparation {
     		// the negative trace
     		final String invariant = prettyConjuncts(invariants);
         	final String tlaCompHV = writeHistVarsSpec(tlaComp, cfgComp, invariant, true);
-        	final String negTrace = isCandSepInvariant(tlaCompHV, cfgComp, "NT", "NegTrace");
+        	final String negTrace = isCandSepInvariant(tlaCompHV, cfgNegTraces, "NT", "NegTrace");
     		formulaSeparates = negTrace.equals("TRUE");
     		Utils.printVerbose(verbose, "negTrace:\n" + negTrace);
 
@@ -380,6 +390,11 @@ public class FormulaSeparation {
 			Utils.assertTrue(i < moduleNodes.size()-1, "Could not find a place for CandSep!");
 		}
 		
+		// add the safety property in (if one is provided)
+		// only include the safety property when writing negative traces, i.e. when candSepInActions is true
+		final String safetyDecl = !(this.usePropFile && candSepInActions) ? "" :
+			"\nSafety ==\n" + String.join("\n", Utils.fileContents(this.propFile)) + "\n";
+		
 		// construct the spec
 		final String specBody = String.join("\n\n", strModuleNodes);
 		
@@ -410,6 +425,7 @@ public class FormulaSeparation {
         builder.append("\n");
         builder.append(specBody);
         builder.append("\n");
+        builder.append(safetyDecl);
         builder.append(endModule).append("\n");
 
         final String fileName = specName + ".tla";

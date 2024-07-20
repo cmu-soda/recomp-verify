@@ -1,0 +1,3 @@
+/\ \A V \in RMs : (onceRcvCommit[V]) => (onceSndPrepare[V])
+/\ \A W \in RMs : \A V \in RMs : (onceRcvCommit[W]) => (onceSndPrepare[V])
+/\ \A V \in RMs : (onceRcvCommit[V]) => (\A W \in RMs : ~(onceRcvAbort[W]))

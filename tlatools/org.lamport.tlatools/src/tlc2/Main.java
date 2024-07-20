@@ -16,19 +16,20 @@ public class Main {
     public static void main(String[] args) {
 		SymbolTable.init();
     	//calc(args);
-    	if (args.length >= 4) {
+    	if (args.length >= 5) {
     		final String tlaSys = args[0];
     		final String cfgSys = args[1];
     		final String tlaComp = args[2];
     		final String cfgComp = args[3];
+    		final String propFile = args[4];
     		
     		List<Utils.Pair<String,String>> otherComponents = new ArrayList<>();
-    		for (int i = 4; i < args.length; i += 2) {
+    		for (int i = 5; i < args.length; i += 2) {
     			Utils.assertTrue(i+1 < args.length, "Each 'other' component must have a .cfg file too.");
     			otherComponents.add(new Utils.Pair<>(args[i], args[i+1]));
     		}
     		
-    		final String formula = new FormulaSeparation(tlaSys, cfgSys, tlaComp, cfgComp, otherComponents).synthesizeSepInvariant();
+    		final String formula = new FormulaSeparation(tlaSys, cfgSys, tlaComp, cfgComp, propFile, otherComponents).synthesizeSepInvariant();
     		
     		System.out.println("The following formula is a separating assumption:");
     		System.out.println(formula);
