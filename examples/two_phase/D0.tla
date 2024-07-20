@@ -1,11 +1,11 @@
 --------------------------- MODULE D0 ---------------------------
 EXTENDS Naturals, Sequences, Integers
 
+CONSTANTS RMs
+
 VARIABLES rmState
 
 vars == <<rmState>>
-
-RMs == {"rm1","rm2"}
 
 Message == ([type : {"Prepared"},theRM : RMs] \cup [type : {"Commit","Abort"}])
 

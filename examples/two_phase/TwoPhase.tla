@@ -2,11 +2,11 @@
 
 EXTENDS Sequences, Naturals, Integers
 
+CONSTANTS RMs
+
 VARIABLES msgs, rmState, tmState, tmPrepared
 
 vars == <<msgs, rmState, tmState, tmPrepared>>
-
-RMs == {"rm1", "rm2"}
 
 Message ==
   [type : {"Prepared"}, theRM : RMs]  \cup  [type : {"Commit", "Abort"}]

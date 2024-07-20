@@ -1,11 +1,11 @@
 --------------------------- MODULE TwoPhase_hist ---------------------------
 EXTENDS Naturals, Sequences, Integers
 
+CONSTANTS RMs
+
 VARIABLES msgs, tmState, onceSilentAbort, onceRcvAbort, tmPrepared, rmState, onceRcvPrepare, onceRcvCommit, onceSndCommit, onceSndAbort, onceSndPrepare
 
 vars == <<msgs, tmState, onceSilentAbort, onceRcvAbort, tmPrepared, rmState, onceRcvPrepare, onceRcvCommit, onceSndCommit, onceSndAbort, onceSndPrepare>>
-
-RMs == {"rm1","rm2"}
 
 CandSep ==
 (\E Var1 \in RMs : onceRcvCommit[Var1]) => (\A Var1 \in RMs : ~(onceRcvAbort[Var1]))

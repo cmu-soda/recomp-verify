@@ -464,6 +464,14 @@ public class TLC {
     	return TLC.currentInstance.ltsBuilder;
     }
     
+    public List<String> constantsInSpec() {
+    	return this.tool.getModelConfig().getConstantsAsList()
+    		.stream()
+    		.filter(l -> l.size() == 2) // only retain constant assignments
+    		.map(l -> l.get(0)) // get the asignee (the constant)
+    		.collect(Collectors.toList());
+    }
+    
     public Set<String> actionsInSpec() {
     	final FastTool ft = (FastTool) this.tool;
     	return Utils.toArrayList(ft.getActions())

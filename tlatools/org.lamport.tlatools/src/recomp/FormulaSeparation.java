@@ -25,10 +25,13 @@ public class FormulaSeparation {
 	public static String synthesizeSepInvariant(final String tlaSys, final String cfgSys, final String tlaComp, final String cfgComp) {
     	SymbolTable.init();
     	
-    	// TODO the config won't work if there's CONSTANTs
+    	TLC tlc = new TLC();
+    	tlc.initialize(tlaSys, cfgSys);
+    	
     	// config for producing positive traces
+    	final String strCfgConstants = String.join("\n", tlc.tool.getModelConfig().getRawConstants());
     	final String cfgPosTraces = "pos_traces.cfg";
-    	Utils.writeFile(cfgPosTraces, "SPECIFICATION Spec\nINVARIANT CandSep");
+    	Utils.writeFile(cfgPosTraces, "SPECIFICATION Spec\nINVARIANT CandSep\n" + strCfgConstants);
     	
     	//final List<String> rawComponents = Decomposition.decompAll(tla, cfg);
     	//final List<String> components = Composition.symbolicCompose(tla, cfg, "CUSTOM", "recomp_map.csv", rawComponents);
@@ -205,7 +208,8 @@ public class FormulaSeparation {
 				.map(d -> d.toTLA())
 				.collect(Collectors.toList());
 		
-		// add CandSep to the module definitions
+		// add CandSep to the module definitions (after any dependencies, where a dependency
+		// is a definition for a type symbol that occurs in CandSep)
 		final Set<String> allTypes = actionParamTypes
 				.values()
 				.stream()
@@ -242,6 +246,7 @@ public class FormulaSeparation {
         ArrayList<String> moduleNameList = Utils.filterArrayWhiteList(moduleWhiteList, ft.getModuleNames());
 
         final String moduleList = String.join(", ", moduleNameList);
+        final String constantsDecl = tlc.constantsInSpec().isEmpty() ? "" : "CONSTANTS " + String.join(", ", tlc.constantsInSpec());
         final String varList = String.join(", ", Utils.union(tlc.stateVarsInSpec(), onceVars));
         final String modulesDecl = moduleList.isEmpty() ? "" : "EXTENDS " + moduleList;
         final String varsDecl = "VARIABLES " + varList;
@@ -250,6 +255,8 @@ public class FormulaSeparation {
         StringBuilder builder = new StringBuilder();
         builder.append(specDecl).append("\n");
         builder.append(modulesDecl).append("\n");
+        builder.append("\n");
+        builder.append(constantsDecl).append("\n");
         builder.append("\n");
         builder.append(varsDecl).append("\n");
         builder.append("\n");

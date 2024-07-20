@@ -1,11 +1,11 @@
 --------------------------- MODULE D1 ---------------------------
 EXTENDS Naturals, Sequences, Integers
 
+CONSTANTS RMs
+
 VARIABLES msgs
 
 vars == <<msgs>>
-
-RMs == {"rm1","rm2"}
 
 Message == ([type : {"Prepared"},theRM : RMs] \cup [type : {"Commit","Abort"}])
 

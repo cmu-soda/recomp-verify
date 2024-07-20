@@ -1,11 +1,11 @@
 --------------------------- MODULE D0_hist ---------------------------
 EXTENDS Naturals, Sequences, Integers
 
+CONSTANTS RMs
+
 VARIABLES onceSilentAbort, onceRcvAbort, rmState, onceRcvCommit, onceSndPrepare
 
 vars == <<onceSilentAbort, onceRcvAbort, rmState, onceRcvCommit, onceSndPrepare>>
-
-RMs == {"rm1","rm2"}
 
 CandSep ==
 /\ \A Var1 \in RMs : (onceRcvCommit[Var1]) => (onceSndPrepare[Var1])
