@@ -12,6 +12,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import cmu.isr.ts.LTS;
+import cmu.isr.ts.lts.RandTraceUtils;
 import cmu.isr.ts.lts.SafetyUtils;
 import lts.SymbolTable;
 import net.automatalib.words.Word;
@@ -30,6 +31,7 @@ public class FormulaSeparation {
 	private final TLC tlcComp;
 	private final Set<String> internalActions;
 	private final Map<String, List<String>> actionParamTypes;
+	private final boolean verbose;
 	
 	public FormulaSeparation(final String tlaSys, final String cfgSys, final String tlaComp, final String cfgComp,
 			final List<Utils.Pair<String,String>> otherComponents) {
@@ -39,7 +41,7 @@ public class FormulaSeparation {
 		this.cfgComp = cfgComp;
 		
 		tlcSys = new TLC();
-    	tlcSys.initialize(tlaSys, cfgSys);
+    	tlcSys.modelCheck(tlaSys, cfgSys);
 		tlcComp = new TLC();
     	tlcComp.initialize(tlaComp, cfgComp);
     	
@@ -58,6 +60,8 @@ public class FormulaSeparation {
 		// obtain a map of: action -> List(param type)
     	FastTool ft = (FastTool) tlcSys.tool;
 		actionParamTypes = TLC.getTransitionRelationNode(ft, tlcSys, "Next").actionParamTypes(tlcSys.actionsInSpec());
+		
+		verbose = false;
 	}
 	
 	public String synthesizeSepInvariant() {
@@ -69,11 +73,12 @@ public class FormulaSeparation {
     	//final List<String> rawComponents = Decomposition.decompAll(tla, cfg);
     	//final List<String> components = Composition.symbolicCompose(tla, cfg, "CUSTOM", "recomp_map.csv", rawComponents);
     	
-    	// TODO auto generate this instead
-    	final String initPosTrace = "one sig PT1 extends PosTrace {} {\n"
+    	/*final String initPosTrace = "one sig PT1 extends PosTrace {} {\n"
     			+ "	 lastIdx = T3\n"
     			+ "	 (T0->SndPreparerm1 + T1->SndPreparerm2 + T2->RcvCommitrm2 + T3->RcvCommitrm1) in path\n"
-    			+ "}";
+    			+ "}";*/
+    	final Word<String> initTrace = RandTraceUtils.INSTANCE.randTrace(tlcSys.getLTSBuilder().toIncompleteDetAutWithoutAnErrorState(), 8);
+    	final String initPosTrace = createAlloyTrace(initTrace, "PT1", "PosTrace");
     	List<String> posTraces = new ArrayList<>();
     	posTraces.add(initPosTrace);
     	
@@ -90,6 +95,7 @@ public class FormulaSeparation {
         	final String tlaCompHV = writeHistVarsSpec(tlaComp, cfgComp, invariant, true);
         	final String negTrace = isCandSepInvariant(tlaCompHV, cfgComp, "NT", "NegTrace");
     		formulaSeparates = negTrace.equals("TRUE");
+    		Utils.printVerbose(verbose, "negTrace:\n" + negTrace);
 
     		// use the negative trace and all existing positive traces to generate a formula
 			// keep generating positive traces until the formula turns into an invariant
@@ -110,6 +116,7 @@ public class FormulaSeparation {
     				System.out.println("The formula is an invariant! Moving to the next round.");
     			}
     			else {
+    	    		Utils.printVerbose(verbose, "posTrace:\n" + posTrace);
     				posTraces.add(posTrace);
     			}
     		}
@@ -128,12 +135,16 @@ public class FormulaSeparation {
     	if (SafetyUtils.INSTANCE.ltsIsSafe(lts)) {
     		return "TRUE";
     	}
-    	
+		
+		// if candSep isn't an invariant, return a trace that should be covered by the formula
+		return createAlloyTrace(SafetyUtils.INSTANCE.findErrorTrace(lts), name, ext);
+	}
+	
+	private String createAlloyTrace(final Word<String> word, final String name, final String ext) {
 		// use the alphabet for the component
 		final Set<String> alphabet = this.tlcComp.actionsInSpec();
 		
-		// if candSep isn't an invariant, return a trace that should be covered by the formula
-		final List<String> trace = SafetyUtils.INSTANCE.findErrorTrace(lts)
+		final List<String> trace = word
 				.stream()
 				.filter(act -> {
 					final String abstractAct = act.replaceAll("\\..*$", "");
@@ -258,7 +269,7 @@ public class FormulaSeparation {
 					})
 					.collect(Collectors.joining("\n"));
 			
-			concActsBuilder.append(strBaseDecl).append("\n").append(strConcreteActions).append("\n");
+			concActsBuilder.append(strBaseDecl).append("\n").append(strConcreteActions).append("\n\n");
 		}
 		
 		// determine the max length of the traces
@@ -297,7 +308,7 @@ public class FormulaSeparation {
 		final String alloyFormulaInfer = baseAlloyFormulaInfer
 				+ "\n" + atomsDecl + "\n"
 				+ "\n" + strSortDecls + "\n"
-				+ "\n" + concActsBuilder.toString() + "\n"
+				+ "\n" + concActsBuilder.toString()
 				+ "\n" + strIndicesDecl + "\n"
 				+ "\n" + strIndicesFacts + "\n\n"
 				+ "\n" + negTrace + "\n\n"
@@ -433,7 +444,9 @@ public class FormulaSeparation {
 	
 	private static final String baseAlloyFormulaInfer = "open util/ordering[Idx]\n"
 			+ "\n"
-			+ "sig Var {}\n"
+			+ "abstract sig Var {}\n"
+			// TODO make this a param
+			+ "one sig V, W extends Var {} {}\n"
 			+ "\n"
 			+ "abstract sig Atom {}\n"
 			+ "\n"
@@ -451,7 +464,6 @@ public class FormulaSeparation {
 			+ "	baseName : one BaseName,\n"
 			+ "	params : seq Atom\n"
 			+ "}\n"
-			+ "\n"
 			+ "\n"
 			+ "\n"
 			+ "/* Formula signatures (represented by a DAG) */\n"
@@ -507,17 +519,47 @@ public class FormulaSeparation {
 			+ "	all f : Formula | f in Root.*children // all formulas must be a sub-formula of the root\n"
 			+ "	no Root.^children & Root // root appears once\n"
 			+ "	all f : Formula | f not in f.^children // eliminates cycles in formula nodes\n"
-			+ "	all f1, f2 : Forall | (f2 in f1.^children) implies not (f1.var = f2.var) // do not quantify over a variable that's already in scope\n"
-			+ "	OnceVar.vars.elems in Forall.var // approximately: no free variables\n"
+			+ "	OnceVar.vars.elems in (Forall.var + Exists.var) // approximately: no free variables\n"
 			+ "	all f : OnceVar | #(f.vars) = f.baseName.numParams // the number of params in each action must match the action\n"
+			+ "\n"
+			+ "	// do not quantify over a variable that's already in scope\n"
+			+ "	all f1, f2 : Forall | (f2 in f1.^children) implies not (f1.var = f2.var)\n"
+			+ "	all f1, f2 : Exists | (f2 in f1.^children) implies not (f1.var = f2.var)\n"
+			+ "	all f1 : Forall, f2 : Exists | (f2 in f1.^children) implies not (f1.var = f2.var)\n"
+			+ "	all f1 : Exists, f2 : Forall | (f2 in f1.^children) implies not (f1.var = f2.var)\n"
 			+ "}\n"
 			+ "\n"
 			+ "\n"
-			+ "sig Env {\n"
+			+ "abstract sig Env {\n"
 			+ "	maps : set(Var -> Atom)\n"
 			+ "}\n"
 			+ "one sig EmptyEnv extends Env {} {\n"
 			+ "	no maps\n"
+			+ "}\n"
+			// TODO fix this hack
+			+ "one sig Vtorm1 extends Env {} {\n"
+			+ "	maps = V->rm1\n"
+			+ "}\n"
+			+ "one sig Wtorm1 extends Env {} {\n"
+			+ "	maps = W->rm1\n"
+			+ "}\n"
+			+ "one sig Vtorm2 extends Env {} {\n"
+			+ "	maps = V->rm2\n"
+			+ "}\n"
+			+ "one sig Wtorm2 extends Env {} {\n"
+			+ "	maps = W->rm2\n"
+			+ "}\n"
+			+ "one sig Vtorm1Wtorm2 extends Env {} {\n"
+			+ "	maps = V->rm1 + W->rm2\n"
+			+ "}\n"
+			+ "one sig Vtorm2Wtorm1 extends Env {} {\n"
+			+ "	maps = V->rm2 + W->rm1\n"
+			+ "}\n"
+			+ "one sig Vtorm1Wtorm1 extends Env {} {\n"
+			+ "	maps = V->rm1 + W->rm1\n"
+			+ "}\n"
+			+ "one sig Vtorm2Wtorm2 extends Env {} {\n"
+			+ "	maps = V->rm2 + W->rm2\n"
 			+ "}\n"
 			+ "\n"
 			+ "abstract sig Idx {}\n"
@@ -575,8 +617,9 @@ public class FormulaSeparation {
 			+ "	all nt : NegTrace | EmptyEnv->nt.lastIdx->Root not in nt.satisfies\n"
 			+ "	EmptyEnv->T0->Root in EmptyTrace.satisfies\n"
 			+ "	minsome children // smallest formula possible\n"
+			// TODO fix these hacks
 			+ "} for 7 Formula,\n"
-			+ "2 Var, 5 Env, 1 seq\n"
+			+ "1 seq\n"
 			+ "\n"
 			+ "\n";
 }

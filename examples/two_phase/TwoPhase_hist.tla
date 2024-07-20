@@ -8,7 +8,7 @@ VARIABLES msgs, tmState, onceSilentAbort, onceRcvAbort, tmPrepared, rmState, onc
 vars == <<msgs, tmState, onceSilentAbort, onceRcvAbort, tmPrepared, rmState, onceRcvPrepare, onceRcvCommit, onceSndCommit, onceSndAbort, onceSndPrepare>>
 
 CandSep ==
-\A Var0 \in RMs : (onceRcvAbort[Var0]) => (\A Var1 \in RMs : ~(onceRcvCommit[Var1]))
+\A V \in RMs : (onceRcvCommit[V]) => (\A W \in RMs : ~(onceRcvAbort[W]))
 
 Message == ([type : {"Prepared"},theRM : RMs] \cup [type : {"Commit","Abort"}])
 

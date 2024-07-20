@@ -1,6 +1,7 @@
 open util/ordering[Idx]
 
-sig Var {}
+abstract sig Var {}
+one sig V, W extends Var {} {}
 
 abstract sig Atom {}
 
@@ -18,7 +19,6 @@ abstract sig Act {
 	baseName : one BaseName,
 	params : seq Atom
 }
-
 
 
 /* Formula signatures (represented by a DAG) */
@@ -74,17 +74,46 @@ fact {
 	all f : Formula | f in Root.*children // all formulas must be a sub-formula of the root
 	no Root.^children & Root // root appears once
 	all f : Formula | f not in f.^children // eliminates cycles in formula nodes
-	all f1, f2 : Forall | (f2 in f1.^children) implies not (f1.var = f2.var) // do not quantify over a variable that's already in scope
-	OnceVar.vars.elems in Forall.var // approximately: no free variables
+	OnceVar.vars.elems in (Forall.var + Exists.var) // approximately: no free variables
 	all f : OnceVar | #(f.vars) = f.baseName.numParams // the number of params in each action must match the action
+
+	// do not quantify over a variable that's already in scope
+	all f1, f2 : Forall | (f2 in f1.^children) implies not (f1.var = f2.var)
+	all f1, f2 : Exists | (f2 in f1.^children) implies not (f1.var = f2.var)
+	all f1 : Forall, f2 : Exists | (f2 in f1.^children) implies not (f1.var = f2.var)
+	all f1 : Exists, f2 : Forall | (f2 in f1.^children) implies not (f1.var = f2.var)
 }
 
 
-sig Env {
+abstract sig Env {
 	maps : set(Var -> Atom)
 }
 one sig EmptyEnv extends Env {} {
 	no maps
+}
+one sig Vtorm1 extends Env {} {
+	maps = V->rm1
+}
+one sig Wtorm1 extends Env {} {
+	maps = W->rm1
+}
+one sig Vtorm2 extends Env {} {
+	maps = V->rm2
+}
+one sig Wtorm2 extends Env {} {
+	maps = W->rm2
+}
+one sig Vtorm1Wtorm2 extends Env {} {
+	maps = V->rm1 + W->rm2
+}
+one sig Vtorm2Wtorm1 extends Env {} {
+	maps = V->rm2 + W->rm1
+}
+one sig Vtorm1Wtorm1 extends Env {} {
+	maps = V->rm1 + W->rm1
+}
+one sig Vtorm2Wtorm2 extends Env {} {
+	maps = V->rm2 + W->rm2
 }
 
 abstract sig Idx {}
@@ -143,7 +172,7 @@ run {
 	EmptyEnv->T0->Root in EmptyTrace.satisfies
 	minsome children // smallest formula possible
 } for 7 Formula,
-2 Var, 5 Env, 1 seq
+1 seq
 
 
 
@@ -166,6 +195,7 @@ one sig SndPreparerm2 extends Act {} {
 	params[0] = rm2
 	#params = 1
 }
+
 one sig SilentAbort extends BaseName {} {
 	numParams = 1
 }
@@ -179,6 +209,7 @@ one sig SilentAbortrm2 extends Act {} {
 	params[0] = rm2
 	#params = 1
 }
+
 one sig RcvAbort extends BaseName {} {
 	numParams = 1
 }
@@ -192,6 +223,7 @@ one sig RcvAbortrm2 extends Act {} {
 	params[0] = rm2
 	#params = 1
 }
+
 one sig RcvCommit extends BaseName {} {
 	numParams = 1
 }
@@ -222,14 +254,10 @@ one sig NT extends NegTrace {} {
 }
 
 one sig PT1 extends PosTrace {} {
-	 lastIdx = T3
-	 (T0->SndPreparerm1 + T1->SndPreparerm2 + T2->RcvCommitrm2 + T3->RcvCommitrm1) in path
+  lastIdx = T3
+  (T0->SndPreparerm1 + T1->SndPreparerm2 + T2->RcvAbortrm1 + T3->RcvAbortrm2) in path
 }
 one sig PT2 extends PosTrace {} {
-  lastIdx = T0
-  (T0->RcvAbortrm1) in path
-}
-one sig PT3 extends PosTrace {} {
-  lastIdx = T1
-  (T0->SndPreparerm1 + T1->RcvAbortrm1) in path
+  lastIdx = T2
+  (T0->SndPreparerm1 + T1->SndPreparerm2 + T2->RcvCommitrm2) in path
 }
