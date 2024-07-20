@@ -1,5 +1,6 @@
 package tlc2;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import cmu.isr.ts.LTS;
@@ -20,7 +21,14 @@ public class Main {
     		final String cfgSys = args[1];
     		final String tlaComp = args[2];
     		final String cfgComp = args[3];
-    		final String formula = new FormulaSeparation(tlaSys, cfgSys, tlaComp, cfgComp).synthesizeSepInvariant();
+    		
+    		List<Utils.Pair<String,String>> otherComponents = new ArrayList<>();
+    		for (int i = 4; i < args.length; i += 2) {
+    			Utils.assertTrue(i+1 < args.length, "Each 'other' component must have a .cfg file too.");
+    			otherComponents.add(new Utils.Pair<>(args[i], args[i+1]));
+    		}
+    		
+    		final String formula = new FormulaSeparation(tlaSys, cfgSys, tlaComp, cfgComp, otherComponents).synthesizeSepInvariant();
     		
     		System.out.println("The following formula is a separating assumption:");
     		System.out.println(formula);

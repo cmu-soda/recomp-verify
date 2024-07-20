@@ -28,10 +28,11 @@ public class FormulaSeparation {
 	private final String cfgComp;
 	private final TLC tlcSys;
 	private final TLC tlcComp;
-	private final List<String> internalActions;
+	private final Set<String> internalActions;
 	private final Map<String, List<String>> actionParamTypes;
 	
-	public FormulaSeparation(final String tlaSys, final String cfgSys, final String tlaComp, final String cfgComp) {
+	public FormulaSeparation(final String tlaSys, final String cfgSys, final String tlaComp, final String cfgComp,
+			final List<Utils.Pair<String,String>> otherComponents) {
 		this.tlaSys = tlaSys;
 		this.cfgSys = cfgSys;
 		this.tlaComp = tlaComp;
@@ -42,8 +43,17 @@ public class FormulaSeparation {
 		tlcComp = new TLC();
     	tlcComp.initialize(tlaComp, cfgComp);
     	
-    	// TODO fix
-    	internalActions = List.of("SilentAbort");
+    	final Set<String> otherComponentActs = otherComponents
+    			.stream()
+    			.map(p -> {
+    				TLC tlc = new TLC();
+    				tlc.initialize(p.first, p.second);
+    				return tlc.actionsInSpec();
+    			})
+    			.reduce((Set<String>)new HashSet<String>(),
+    					(acc,s) -> Utils.union(acc, s),
+    					(s1,s2) -> Utils.union(s1, s2));
+    	internalActions = Utils.setMinus(tlcComp.actionsInSpec(), otherComponentActs);
 		
 		// obtain a map of: action -> List(param type)
     	FastTool ft = (FastTool) tlcSys.tool;
