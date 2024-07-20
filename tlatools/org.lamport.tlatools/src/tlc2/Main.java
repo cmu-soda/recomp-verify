@@ -4,6 +4,7 @@ import java.util.List;
 
 import cmu.isr.ts.LTS;
 import cmu.isr.ts.lts.ltsa.FSPWriter;
+import lts.SymbolTable;
 import recomp.Composition;
 import recomp.Decomposition;
 import recomp.FormulaSeparation;
@@ -12,13 +13,14 @@ import recomp.WeakestAssumption;
 
 public class Main {
     public static void main(String[] args) {
+		SymbolTable.init();
     	//calc(args);
     	if (args.length >= 4) {
     		final String tlaSys = args[0];
     		final String cfgSys = args[1];
     		final String tlaComp = args[2];
     		final String cfgComp = args[3];
-    		final String formula = FormulaSeparation.synthesizeSepInvariant(tlaSys, cfgSys, tlaComp, cfgComp);
+    		final String formula = new FormulaSeparation(tlaSys, cfgSys, tlaComp, cfgComp).synthesizeSepInvariant();
     		
     		System.out.println("The following formula is a separating assumption:");
     		System.out.println(formula);
@@ -35,8 +37,8 @@ public class Main {
     		final String cfgSys = args[1];
     		final String tlaComp = args[2];
     		final String cfgComp = args[3];
-    		final String output = FormulaSeparation.isCandSepInvariant(tlaSys, cfgSys, tlaComp, cfgComp, "", "");
-    		System.out.println(output);
+    		//final String output = FormulaSeparation.isCandSepInvariant(tlaSys, cfgSys, tlaComp, cfgComp, "", "");
+    		//System.out.println(output);
     		
     		//final boolean decompose = hasFlag(args, "--decomp");
     		//final boolean weakestAssumption = hasFlag(args, "--wa");

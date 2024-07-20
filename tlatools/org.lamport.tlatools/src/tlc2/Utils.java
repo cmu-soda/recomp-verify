@@ -285,6 +285,14 @@ public class Utils {
     	}
     	return dst;
     }
+
+    public static <T> Set<T> toSet(T[] src) {
+    	Set<T> dst = new HashSet<T>();
+    	for (int i = 0; i < src.length; ++i) {
+    		dst.add(src[i]);
+    	}
+    	return dst;
+    }
     
     public static <T> List<String> toStringList(Collection<T> src) {
     	List<String> dst = new ArrayList<>();

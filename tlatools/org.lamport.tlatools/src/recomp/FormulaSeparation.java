@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import cmu.isr.ts.LTS;
 import cmu.isr.ts.lts.SafetyUtils;
@@ -21,15 +22,37 @@ import tlc2.Utils;
 import tlc2.tool.impl.FastTool;
 
 public class FormulaSeparation {
+	private final String tlaSys;
+	private final String cfgSys;
+	private final String tlaComp;
+	private final String cfgComp;
+	private final TLC tlcSys;
+	private final TLC tlcComp;
+	private final List<String> internalActions;
+	private final Map<String, List<String>> actionParamTypes;
 	
-	public static String synthesizeSepInvariant(final String tlaSys, final String cfgSys, final String tlaComp, final String cfgComp) {
-    	SymbolTable.init();
+	public FormulaSeparation(final String tlaSys, final String cfgSys, final String tlaComp, final String cfgComp) {
+		this.tlaSys = tlaSys;
+		this.cfgSys = cfgSys;
+		this.tlaComp = tlaComp;
+		this.cfgComp = cfgComp;
+		
+		tlcSys = new TLC();
+    	tlcSys.initialize(tlaSys, cfgSys);
+		tlcComp = new TLC();
+    	tlcComp.initialize(tlaComp, cfgComp);
     	
-    	TLC tlc = new TLC();
-    	tlc.initialize(tlaSys, cfgSys);
-    	
+    	// TODO fix
+    	internalActions = List.of("SilentAbort");
+		
+		// obtain a map of: action -> List(param type)
+    	FastTool ft = (FastTool) tlcSys.tool;
+		actionParamTypes = TLC.getTransitionRelationNode(ft, tlcSys, "Next").actionParamTypes(tlcSys.actionsInSpec());
+	}
+	
+	public String synthesizeSepInvariant() {
     	// config for producing positive traces
-    	final String strCfgConstants = String.join("\n", tlc.tool.getModelConfig().getRawConstants());
+    	final String strCfgConstants = String.join("\n", tlcSys.tool.getModelConfig().getRawConstants());
     	final String cfgPosTraces = "pos_traces.cfg";
     	Utils.writeFile(cfgPosTraces, "SPECIFICATION Spec\nINVARIANT CandSep\n" + strCfgConstants);
     	
@@ -55,7 +78,7 @@ public class FormulaSeparation {
     		// the negative trace
     		final String invariant = prettyConjuncts(invariants);
         	final String tlaCompHV = writeHistVarsSpec(tlaComp, cfgComp, invariant, true);
-        	final String negTrace = isCandSepInvariant(tlaCompHV, cfgComp, tlaComp, cfgComp, "NT", "NegTrace");
+        	final String negTrace = isCandSepInvariant(tlaCompHV, cfgComp, "NT", "NegTrace");
     		formulaSeparates = negTrace.equals("TRUE");
 
     		// use the negative trace and all existing positive traces to generate a formula
@@ -68,7 +91,7 @@ public class FormulaSeparation {
     			final int ptNum = posTraces.size() + 1;
     			final String ptName = "PT" + ptNum;
     	    	final String tlaSysHV = writeHistVarsSpec(tlaSys, cfgSys, formula, false);
-    			final String posTrace = isCandSepInvariant(tlaSysHV, cfgPosTraces, tlaComp, cfgComp, ptName, "PosTrace");
+    			final String posTrace = isCandSepInvariant(tlaSysHV, cfgPosTraces, ptName, "PosTrace");
     			isInvariant = posTrace.equals("TRUE");
     			
     			System.out.println("Synthesized: " + formula);
@@ -87,8 +110,7 @@ public class FormulaSeparation {
     	return prettyConjuncts(invariants);
 	}
 	
-	public static String isCandSepInvariant(final String tla, final String cfg,
-			final String tlaAlphabetSpec, final String cfgAlphabetSpec, final String name, final String ext) {
+	private String isCandSepInvariant(final String tla, final String cfg, final String name, final String ext) {
     	TLC tlc = new TLC();
     	tlc.modelCheck(tla, cfg);
     	final LTS<Integer, String> lts = tlc.getLTSBuilder().toIncompleteDetAutIncludingAnErrorState();
@@ -97,9 +119,8 @@ public class FormulaSeparation {
     		return "TRUE";
     	}
     	
-		TLC tlcComp = new TLC();
-		tlcComp.initialize(tlaAlphabetSpec, cfgAlphabetSpec);
-		final Set<String> alphabet = tlcComp.actionsInSpec();
+		// use the alphabet for the component
+		final Set<String> alphabet = this.tlcComp.actionsInSpec();
 		
 		// if candSep isn't an invariant, return a trace that should be covered by the formula
 		final List<String> trace = SafetyUtils.INSTANCE.findErrorTrace(lts)
@@ -127,15 +148,7 @@ public class FormulaSeparation {
 		return str;
 	}
 	
-	private static String prettyConjuncts(final List<String> conjuncts) {
-		if (conjuncts.isEmpty()) {
-			return "TRUE";
-		}
-		final String delim = "\n/\\ ";
-		return "/\\ " + String.join(delim, conjuncts);
-	}
-	
-	private static String synthesizeFormula(final String negTrace, final List<String> posTraces) {
+	private String synthesizeFormula(final String negTrace, final List<String> posTraces) {
 		final String alloyFormulaInferFile = "formula_infer.als";
 
 		writeAlloyFormulaInferFile(alloyFormulaInferFile, negTrace, posTraces);
@@ -160,14 +173,129 @@ public class FormulaSeparation {
 		return formulaBuilder.toString();
 	}
 	
-	private static void writeAlloyFormulaInferFile(final String fileName, final String negTrace, final List<String> posTraces) {
+	private void writeAlloyFormulaInferFile(final String fileName, final String negTrace, final List<String> posTraces) {
+		// add all atoms, i.e. the values in each constant
+		final String strAtomList = tlcSys.tool.getModelConfig().getConstantsAsList()
+				.stream()
+				.filter(l -> l.size() == 2) // only retain assignments
+				.map(l -> l.get(1)) // only retain the values of each assignment (i.e. the set of atoms)
+				.map(s -> s.replaceAll("[{}]", "").split(",")) // each element in the stream is now an array of atoms
+				.reduce((Set<String>)new HashSet<String>(),
+						(acc,l) -> Utils.union(acc, Utils.toSet(l)),
+						(l1,l2) -> Utils.union(l1,l2))
+				.stream()
+				.map(s -> s.trim())
+				.collect(Collectors.joining(", "));
+		final String atomsDecl = "one sig " + strAtomList + " extends Atom {}";
+		
+		// create a map of sort -> elements (elements = atoms)
+		Map<String, Set<String>> sortElements = new HashMap<>();
+		for (final List<String> constList : tlcSys.tool.getModelConfig().getConstantsAsList()) {
+			if (constList.size() == 2) {
+				// constList is a CONSTANT assignment
+				final String sort = constList.get(0);
+				final Set<String> elems = Utils.toArrayList(constList.get(1).replaceAll("[{}]", "").split(","))
+						.stream() // each element in the stream is an array of elements (atoms)
+						.map(e -> e.trim())
+						.collect(Collectors.toSet());
+				sortElements.put(sort, elems);
+			}
+		}
+		
+		// define each sort as the set of its elements (elements = atoms)
+		final String strSortDecls = sortElements.keySet()
+				.stream()
+				.map(sort -> {
+					final Set<String> elems = sortElements.get(sort);
+					final String atoms = String.join(" + ", elems);
+					final String decl = "one sig " + sort + " extends Sort {} {\n"
+							+ "	atoms = " + atoms + "\n"
+							+ "}";
+					return decl;
+				})
+				.collect(Collectors.joining("\n"));
+		
+		// define each concrete action (and its base name) in the component
+		StringBuilder concActsBuilder = new StringBuilder();
+		for (final String act : this.tlcComp.actionsInSpec()) {
+			final List<String> paramTypes = this.actionParamTypes.get(act);
+			final String strBaseDecl = "one sig " + act + " extends BaseName {} {\n"
+					+ "	numParams = " + paramTypes.size() + "\n"
+					+ "}";
+			
+			Set<List<String>> concreteActionParams = new HashSet<>();
+			concreteActionParams.add(new ArrayList<>());
+			for (final String paramType : paramTypes) {
+				// type = sort
+				concreteActionParams = cartProduct(concreteActionParams, sortElements.get(paramType));
+			}
+			
+			final String strConcreteActions = concreteActionParams
+					.stream()
+					.map(params -> {
+						final String concActName = act + String.join("", params);
+						StringBuilder paramsBuilder = new StringBuilder();
+						for (int i = 0; i < params.size(); ++i) {
+							final String param = params.get(i);
+							paramsBuilder.append("	params[").append(i).append("] = ").append(param).append("\n");
+						}
+						final String numParams = "	#params = " + params.size() + "\n";
+						return "one sig " + concActName + " extends Act {} {\n"
+								+ "	baseName = " + act + "\n"
+								+ paramsBuilder.toString()
+								+ numParams
+								+ "}";
+					})
+					.collect(Collectors.joining("\n"));
+			
+			concActsBuilder.append(strBaseDecl).append("\n").append(strConcreteActions).append("\n");
+		}
+		
+		// determine the max length of the traces
+		final int maxTraceLen = Utils.union(posTraces.stream().collect(Collectors.toSet()), Utils.setOf(negTrace))
+				.stream()
+				.map(t -> Utils.toSet(t.split("\n")))
+				.reduce((Set<String>)new HashSet<String>(),
+						(acc,s) -> Utils.union(acc, s),
+						(s1,s2) -> Utils.union(s1, s2))
+				.stream()
+				.filter(l -> l.contains("lastIdx = T"))
+				.map(s -> s.replace("lastIdx = T", "").trim())
+				.mapToInt(s -> Integer.parseInt(s))
+				.max()
+				.getAsInt();
+		
+		// create the indices that are needed for the traces
+		final String strIndices = IntStream.range(0, maxTraceLen+1)
+				.mapToObj(i -> "T" + i)
+				.collect(Collectors.joining(", "));
+		final String strIndicesDecl = "one sig " + strIndices + " extends Idx {}";
+		
+		final String strIndicesNext = IntStream.range(0, maxTraceLen)
+				.mapToObj(i -> "T"+i + "->T"+(i+1))
+				.collect(Collectors.joining(" + "));
+		final String strInternalActs = this.internalActions
+				.stream()
+				.map(act -> "	no OnceVar.baseName & " + act)
+				.collect(Collectors.joining("\n"));
+		final String strIndicesFacts = "fact {\n"
+				+ "	first = T0\n"
+				+ "	next = " + strIndicesNext + "\n"
+				+ strInternalActs + "\n"
+				+ "}";
+		
 		final String alloyFormulaInfer = baseAlloyFormulaInfer
+				+ "\n" + atomsDecl + "\n"
+				+ "\n" + strSortDecls + "\n"
+				+ "\n" + concActsBuilder.toString() + "\n"
+				+ "\n" + strIndicesDecl + "\n"
+				+ "\n" + strIndicesFacts + "\n\n"
 				+ "\n" + negTrace + "\n\n"
 				+ String.join("\n", posTraces) + "\n";
 		Utils.writeFile(fileName, alloyFormulaInfer);
 	}
 	
-	private static String writeHistVarsSpec(final String tla, final String cfg, final String candSep, boolean candSepInActions) {
+	private String writeHistVarsSpec(final String tla, final String cfg, final String candSep, boolean candSepInActions) {
     	final String tlaCompBaseName = tla.replaceAll("\\.tla", "");
     	final String specName = tlaCompBaseName + "_hist";
     	
@@ -183,9 +311,6 @@ public class FormulaSeparation {
 				.filter(d -> moduleName.equals(d.getOriginallyDefinedInModuleNode().getName().toString()))
 				.filter(d -> !d.getName().toString().equals("vars")) // remove the vars decl; we insert this manually
 				.collect(Collectors.toList());
-		
-		// obtain a map of: action -> List(param type)
-		Map<String, List<String>> actionParamTypes = TLC.getTransitionRelationNode(ft, tlc, "Next").actionParamTypes(tlc.actionsInSpec());
 		
 		// create the history vars that represent "once(action)"
 		final Set<String> onceVars = tlc.actionsInSpec()
@@ -271,6 +396,26 @@ public class FormulaSeparation {
         Utils.writeFile(file, builder.toString());
         
         return specName;
+	}
+	
+	private static String prettyConjuncts(final List<String> conjuncts) {
+		if (conjuncts.isEmpty()) {
+			return "TRUE";
+		}
+		final String delim = "\n/\\ ";
+		return "/\\ " + String.join(delim, conjuncts);
+	}
+	
+	private static Set<List<String>> cartProduct(final Set<List<String>> acc, final Set<String> s) {
+		Set<List<String>> product = new HashSet<>();
+		for (final List<String> acce : acc) {
+			for (final String se : s) {
+				List<String> l = new ArrayList<>(acce);
+				l.add(se);
+				product.add(l);
+			}
+		}
+		return product;
 	}
 	
 	// TODO fix path
@@ -408,6 +553,9 @@ public class FormulaSeparation {
 			+ "\n"
 			+ "abstract sig PosTrace extends Trace {} {}\n"
 			+ "abstract sig NegTrace extends Trace {} {}\n"
+			+ "one sig EmptyTrace extends Trace {} {\n"
+			+ "	 no path\n"
+			+ "}\n"
 			+ "\n"
 			+ "\n"
 			+ "/* main */\n"
@@ -415,82 +563,10 @@ public class FormulaSeparation {
 			+ "	// find a formula that separates \"good\" traces from \"bad\" ones\n"
 			+ "	all pt : PosTrace | EmptyEnv->indices[pt]->Root in pt.satisfies\n"
 			+ "	all nt : NegTrace | EmptyEnv->nt.lastIdx->Root not in nt.satisfies\n"
+			+ "	EmptyEnv->T0->Root in EmptyTrace.satisfies\n"
 			+ "	minsome children // smallest formula possible\n"
 			+ "} for 7 Formula,\n"
 			+ "2 Var, 5 Env, 1 seq\n"
 			+ "\n"
-			+ "\n"
-			+ "\n"
-			// TODO generate this part. only include actions that are part of the global alph, so
-			// SilentAbort should not be part of the formula we synthesize (i.e. it shouldn't be an act)
-			+ "/* example traces */\n"
-			+ "\n"
-			+ "one sig rm1, rm2 extends Atom {}\n"
-			+ "one sig RMs extends Sort {} {\n"
-			+ "	atoms = rm1 + rm2\n"
-			+ "}\n"
-			+ "\n"
-			+ "one sig SndPrepare extends BaseName {} {\n"
-			+ "	numParams = 1\n"
-			+ "}\n"
-			+ "one sig RcvCommit extends BaseName {} {\n"
-			+ "	numParams = 1\n"
-			+ "}\n"
-			+ "one sig RcvAbort extends BaseName {} {\n"
-			+ "	numParams = 1\n"
-			+ "}\n"
-			+ "one sig SilentAbort extends BaseName {} {\n"
-			+ "	numParams = 1\n"
-			+ "}\n"
-			+ "\n"
-			+ "one sig SndPreparerm1 extends Act {} {\n"
-			+ "	baseName = SndPrepare\n"
-			+ "	params.first = rm1\n"
-			+ "	#params = 1\n"
-			+ "}\n"
-			+ "one sig SndPreparerm2 extends Act {} {\n"
-			+ "	baseName = SndPrepare\n"
-			+ "	params.first = rm2\n"
-			+ "	#params = 1\n"
-			+ "}\n"
-			+ "one sig RcvCommitrm1 extends Act {} {\n"
-			+ "	baseName = RcvCommit\n"
-			+ "	params.first = rm1\n"
-			+ "	#params = 1\n"
-			+ "}\n"
-			+ "one sig RcvCommitrm2 extends Act {} {\n"
-			+ "	baseName = RcvCommit\n"
-			+ "	params.first = rm2\n"
-			+ "	#params = 1\n"
-			+ "}\n"
-			+ "one sig RcvAbortrm1 extends Act {} {\n"
-			+ "	baseName = RcvAbort\n"
-			+ "	params.first = rm1\n"
-			+ "	#params = 1\n"
-			+ "}\n"
-			+ "one sig RcvAbortrm2 extends Act {} {\n"
-			+ "	baseName = RcvAbort\n"
-			+ "	params.first = rm2\n"
-			+ "	#params = 1\n"
-			+ "}\n"
-			+ "one sig SilentAbortrm1 extends Act {} {\n"
-			+ "	baseName = SilentAbort\n"
-			+ "	params.first = rm1\n"
-			+ "	#params = 1\n"
-			+ "}\n"
-			+ "one sig SilentAbortrm2 extends Act {} {\n"
-			+ "	baseName = SilentAbort\n"
-			+ "	params.first = rm2\n"
-			+ "	#params = 1\n"
-			+ "}\n"
-			+ "\n"
-			+ "\n"
-			+ "one sig T0, T1, T2, T3 extends Idx {}\n"
-			+ "fact {\n"
-			+ "	first = T0\n"
-			+ "	next = T0->T1 + T1->T2 + T2->T3\n"
-			// TODO decide this dynamically
-			+ " no OnceVar.baseName & SilentAbort\n"
-			+ "}\n"
-			+ "";
+			+ "\n";
 }

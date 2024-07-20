@@ -130,6 +130,9 @@ fun indices[t : Trace] : set Idx {
 
 abstract sig PosTrace extends Trace {} {}
 abstract sig NegTrace extends Trace {} {}
+one sig EmptyTrace extends Trace {} {
+	 no path
+}
 
 
 /* main */
@@ -137,80 +140,81 @@ run {
 	// find a formula that separates "good" traces from "bad" ones
 	all pt : PosTrace | EmptyEnv->indices[pt]->Root in pt.satisfies
 	all nt : NegTrace | EmptyEnv->nt.lastIdx->Root not in nt.satisfies
+	EmptyEnv->T0->Root in EmptyTrace.satisfies
 	minsome children // smallest formula possible
 } for 7 Formula,
 2 Var, 5 Env, 1 seq
 
 
 
-/* example traces */
+one sig rm2, rm1 extends Atom {}
 
-one sig rm1, rm2 extends Atom {}
 one sig RMs extends Sort {} {
-	atoms = rm1 + rm2
+	atoms = rm2 + rm1
 }
 
 one sig SndPrepare extends BaseName {} {
 	numParams = 1
 }
-one sig RcvCommit extends BaseName {} {
-	numParams = 1
-}
-one sig RcvAbort extends BaseName {} {
-	numParams = 1
-}
-one sig SilentAbort extends BaseName {} {
-	numParams = 1
-}
-
 one sig SndPreparerm1 extends Act {} {
 	baseName = SndPrepare
-	params.first = rm1
+	params[0] = rm1
 	#params = 1
 }
 one sig SndPreparerm2 extends Act {} {
 	baseName = SndPrepare
-	params.first = rm2
+	params[0] = rm2
 	#params = 1
 }
-one sig RcvCommitrm1 extends Act {} {
-	baseName = RcvCommit
-	params.first = rm1
-	#params = 1
-}
-one sig RcvCommitrm2 extends Act {} {
-	baseName = RcvCommit
-	params.first = rm2
-	#params = 1
-}
-one sig RcvAbortrm1 extends Act {} {
-	baseName = RcvAbort
-	params.first = rm1
-	#params = 1
-}
-one sig RcvAbortrm2 extends Act {} {
-	baseName = RcvAbort
-	params.first = rm2
-	#params = 1
+one sig SilentAbort extends BaseName {} {
+	numParams = 1
 }
 one sig SilentAbortrm1 extends Act {} {
 	baseName = SilentAbort
-	params.first = rm1
+	params[0] = rm1
 	#params = 1
 }
 one sig SilentAbortrm2 extends Act {} {
 	baseName = SilentAbort
-	params.first = rm2
+	params[0] = rm2
+	#params = 1
+}
+one sig RcvAbort extends BaseName {} {
+	numParams = 1
+}
+one sig RcvAbortrm1 extends Act {} {
+	baseName = RcvAbort
+	params[0] = rm1
+	#params = 1
+}
+one sig RcvAbortrm2 extends Act {} {
+	baseName = RcvAbort
+	params[0] = rm2
+	#params = 1
+}
+one sig RcvCommit extends BaseName {} {
+	numParams = 1
+}
+one sig RcvCommitrm1 extends Act {} {
+	baseName = RcvCommit
+	params[0] = rm1
+	#params = 1
+}
+one sig RcvCommitrm2 extends Act {} {
+	baseName = RcvCommit
+	params[0] = rm2
 	#params = 1
 }
 
 
 one sig T0, T1, T2, T3 extends Idx {}
+
 fact {
 	first = T0
 	next = T0->T1 + T1->T2 + T2->T3
- no OnceVar.baseName & SilentAbort
+	no OnceVar.baseName & SilentAbort
 }
+
 
 one sig NT extends NegTrace {} {
   lastIdx = T3
@@ -228,8 +232,4 @@ one sig PT2 extends PosTrace {} {
 one sig PT3 extends PosTrace {} {
   lastIdx = T1
   (T0->SndPreparerm1 + T1->RcvAbortrm1) in path
-}
-one sig PT4 extends PosTrace {} {
-  lastIdx = T2
-  (T0->SndPreparerm1 + T1->RcvAbortrm1 + T2->SndPreparerm2) in path
 }
