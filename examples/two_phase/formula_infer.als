@@ -1,7 +1,6 @@
 open util/ordering[Idx]
 
 abstract sig Var {}
-one sig V, W extends Var {} {}
 
 abstract sig Atom {}
 
@@ -91,30 +90,6 @@ abstract sig Env {
 one sig EmptyEnv extends Env {} {
 	no maps
 }
-one sig Vtorm1 extends Env {} {
-	maps = V->rm1
-}
-one sig Wtorm1 extends Env {} {
-	maps = W->rm1
-}
-one sig Vtorm2 extends Env {} {
-	maps = V->rm2
-}
-one sig Wtorm2 extends Env {} {
-	maps = W->rm2
-}
-one sig Vtorm1Wtorm2 extends Env {} {
-	maps = V->rm1 + W->rm2
-}
-one sig Vtorm2Wtorm1 extends Env {} {
-	maps = V->rm2 + W->rm1
-}
-one sig Vtorm1Wtorm1 extends Env {} {
-	maps = V->rm1 + W->rm1
-}
-one sig Vtorm2Wtorm2 extends Env {} {
-	maps = V->rm2 + W->rm2
-}
 
 abstract sig Idx {}
 
@@ -174,12 +149,52 @@ run {
 } for 7 Formula,
 1 seq
 
-
-
 one sig rm2, rm1 extends Atom {}
 
 one sig RMs extends Sort {} {
 	atoms = rm2 + rm1
+}
+
+one sig SndAbort extends BaseName {} {
+	numParams = 1
+}
+one sig SndAbortrm1 extends Act {} {
+	baseName = SndAbort
+	params[0] = rm1
+	#params = 1
+}
+one sig SndAbortrm2 extends Act {} {
+	baseName = SndAbort
+	params[0] = rm2
+	#params = 1
+}
+
+one sig RcvPrepare extends BaseName {} {
+	numParams = 1
+}
+one sig RcvPreparerm1 extends Act {} {
+	baseName = RcvPrepare
+	params[0] = rm1
+	#params = 1
+}
+one sig RcvPreparerm2 extends Act {} {
+	baseName = RcvPrepare
+	params[0] = rm2
+	#params = 1
+}
+
+one sig SndCommit extends BaseName {} {
+	numParams = 1
+}
+one sig SndCommitrm1 extends Act {} {
+	baseName = SndCommit
+	params[0] = rm1
+	#params = 1
+}
+one sig SndCommitrm2 extends Act {} {
+	baseName = SndCommit
+	params[0] = rm2
+	#params = 1
 }
 
 one sig SndPrepare extends BaseName {} {
@@ -192,20 +207,6 @@ one sig SndPreparerm1 extends Act {} {
 }
 one sig SndPreparerm2 extends Act {} {
 	baseName = SndPrepare
-	params[0] = rm2
-	#params = 1
-}
-
-one sig SilentAbort extends BaseName {} {
-	numParams = 1
-}
-one sig SilentAbortrm1 extends Act {} {
-	baseName = SilentAbort
-	params[0] = rm1
-	#params = 1
-}
-one sig SilentAbortrm2 extends Act {} {
-	baseName = SilentAbort
 	params[0] = rm2
 	#params = 1
 }
@@ -239,25 +240,56 @@ one sig RcvCommitrm2 extends Act {} {
 }
 
 
-one sig T0, T1, T2, T3 extends Idx {}
+one sig T0, T1, T2, T3, T4, T5, T6, T7 extends Idx {}
 
 fact {
 	first = T0
-	next = T0->T1 + T1->T2 + T2->T3
-	no OnceVar.baseName & SilentAbort
+	next = T0->T1 + T1->T2 + T2->T3 + T3->T4 + T4->T5 + T5->T6 + T6->T7
+	no OnceVar.baseName & SndPrepare
+	no OnceVar.baseName & RcvAbort
+	no OnceVar.baseName & RcvCommit
+}
+
+
+one sig var1, var0 extends Var {} {}
+
+
+one sig var1torm2var0torm1 extends Env {} {
+	maps = var1->rm2 + var0->rm1
+}
+one sig var1torm1 extends Env {} {
+	maps = var1->rm1
+}
+one sig var1torm1var0torm2 extends Env {} {
+	maps = var1->rm1 + var0->rm2
+}
+one sig var1torm2 extends Env {} {
+	maps = var1->rm2
+}
+one sig var0torm2 extends Env {} {
+	maps = var0->rm2
+}
+one sig var1torm1var0torm1 extends Env {} {
+	maps = var1->rm1 + var0->rm1
+}
+one sig var0torm1 extends Env {} {
+	maps = var0->rm1
+}
+one sig var1torm2var0torm2 extends Env {} {
+	maps = var1->rm2 + var0->rm2
 }
 
 
 one sig NT extends NegTrace {} {
-  lastIdx = T3
-  (T0->SndPreparerm1 + T1->SndPreparerm2 + T2->RcvAbortrm1 + T3->RcvCommitrm2) in path
+  lastIdx = T7
+  (T0->SndPreparerm1 + T1->SndPreparerm2 + T2->RcvPreparerm1 + T3->SndAbortrm1 + T4->RcvAbortrm1 + T5->RcvPreparerm2 + T6->SndCommitrm2 + T7->RcvCommitrm2) in path
 }
 
 one sig PT1 extends PosTrace {} {
-  lastIdx = T3
-  (T0->SndPreparerm1 + T1->SndPreparerm2 + T2->RcvAbortrm1 + T3->RcvAbortrm2) in path
+  lastIdx = T7
+  (T0->SndPreparerm1 + T1->SndPreparerm2 + T2->RcvPreparerm1 + T3->RcvPreparerm2 + T4->SndAbortrm2 + T5->RcvAbortrm1 + T6->RcvAbortrm2 + T7->SndAbortrm2) in path
 }
 one sig PT2 extends PosTrace {} {
-  lastIdx = T2
-  (T0->SndPreparerm1 + T1->SndPreparerm2 + T2->RcvCommitrm2) in path
+  lastIdx = T4
+  (T0->SndPreparerm1 + T1->SndPreparerm2 + T2->RcvPreparerm1 + T3->RcvPreparerm2 + T4->SndCommitrm1) in path
 }

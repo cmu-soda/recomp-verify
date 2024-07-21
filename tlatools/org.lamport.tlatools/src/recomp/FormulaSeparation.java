@@ -33,6 +33,8 @@ public class FormulaSeparation {
 	private final TLC tlcComp;
 	private final Set<String> internalActions;
 	private final Map<String, List<String>> actionParamTypes;
+	private final int maxActParamLen;
+	private final Set<String> qvars;
 	private final boolean verbose;
 	
 	public FormulaSeparation(final String tlaSys, final String cfgSys, final String tlaComp, final String cfgComp,
@@ -45,6 +47,7 @@ public class FormulaSeparation {
 		this.usePropFile = !propFile.equals("none");
 		this.propFile = propFile;
 		
+		// TODO bound model checking to, say, 1 mil states
 		tlcSys = new TLC();
     	tlcSys.modelCheck(tlaSys, cfgSys);
 		tlcComp = new TLC();
@@ -65,6 +68,17 @@ public class FormulaSeparation {
 		// obtain a map of: action -> List(param type)
     	FastTool ft = (FastTool) tlcSys.tool;
 		actionParamTypes = TLC.getTransitionRelationNode(ft, tlcSys, "Next").actionParamTypes(tlcSys.actionsInSpec());
+		maxActParamLen = actionParamTypes.values()
+				.stream()
+				.mapToInt(l -> l.size())
+				.max()
+				.getAsInt();
+		
+		// TODO make the number of vars a param
+		final int numParams = 2;
+		qvars = IntStream.range(0, numParams)
+				.mapToObj(i -> "var" + i)
+				.collect(Collectors.toSet());
 		
 		verbose = false;
 	}
@@ -87,6 +101,7 @@ public class FormulaSeparation {
     			+ "	 lastIdx = T3\n"
     			+ "	 (T0->SndPreparerm1 + T1->SndPreparerm2 + T2->RcvCommitrm2 + T3->RcvCommitrm1) in path\n"
     			+ "}";*/
+    	// TODO make the init trace len a param
     	final Word<String> initTrace = RandTraceUtils.INSTANCE.randTrace(tlcSys.getLTSBuilder().toIncompleteDetAutWithoutAnErrorState(), 8);
     	final String initPosTrace = createAlloyTrace(initTrace, "PT1", "PosTrace");
     	List<String> posTraces = new ArrayList<>();
@@ -206,7 +221,7 @@ public class FormulaSeparation {
 	
 	private void writeAlloyFormulaInferFile(final String fileName, final String negTrace, final List<String> posTraces) {
 		// add all atoms, i.e. the values in each constant
-		final String strAtomList = tlcSys.tool.getModelConfig().getConstantsAsList()
+		final Set<String> allAtoms = tlcSys.tool.getModelConfig().getConstantsAsList()
 				.stream()
 				.filter(l -> l.size() == 2) // only retain assignments
 				.map(l -> l.get(1)) // only retain the values of each assignment (i.e. the set of atoms)
@@ -216,7 +231,8 @@ public class FormulaSeparation {
 						(l1,l2) -> Utils.union(l1,l2))
 				.stream()
 				.map(s -> s.trim())
-				.collect(Collectors.joining(", "));
+				.collect(Collectors.toSet());
+		final String strAtomList = String.join(", ", allAtoms);
 		final String atomsDecl = "one sig " + strAtomList + " extends Atom {}";
 		
 		// create a map of sort -> elements (elements = atoms)
@@ -315,12 +331,30 @@ public class FormulaSeparation {
 				+ strInternalActs + "\n"
 				+ "}";
 		
+		// declare the quantifier variables
+		final String qvarDelc = "one sig " + String.join(", ", this.qvars) + " extends Var {} {}";
+		
+		// create all possible environments
+		final String strNonEmptyEnvs = allEnvs(this.qvars, allAtoms)
+				.stream()
+				.map(env -> {
+					final String name = env.stream().map(m -> m.first + "to" + m.second).collect(Collectors.joining());
+					final String maps = env.stream().map(m -> m.first + "->" + m.second).collect(Collectors.joining(" + "));
+					return "one sig " + name + " extends Env {} {\n"
+						+ "	maps = " + maps + "\n"
+						+ "}";
+				})
+				.collect(Collectors.joining("\n"));
+		
 		final String alloyFormulaInfer = baseAlloyFormulaInfer
+				+ maxActParamLen + " seq\n"
 				+ "\n" + atomsDecl + "\n"
 				+ "\n" + strSortDecls + "\n"
 				+ "\n" + concActsBuilder.toString()
 				+ "\n" + strIndicesDecl + "\n"
 				+ "\n" + strIndicesFacts + "\n\n"
+				+ "\n" + qvarDelc + "\n\n"
+				+ "\n" + strNonEmptyEnvs + "\n\n"
 				+ "\n" + negTrace + "\n\n"
 				+ String.join("\n", posTraces) + "\n";
 		Utils.writeFile(fileName, alloyFormulaInfer);
@@ -434,6 +468,30 @@ public class FormulaSeparation {
         
         return specName;
 	}
+
+	private static Set<Set<Utils.Pair<String,String>>> allEnvs(final Set<String> vars, final Set<String> atoms) {
+		// don't include the empty env
+		Set<Set<Utils.Pair<String,String>>> envs = allEnvs(vars, atoms, new HashSet<>());
+		envs.remove(new HashSet<>());
+		return envs;
+	}
+	
+	private static Set<Set<Utils.Pair<String,String>>> allEnvs(final Set<String> vars, final Set<String> atoms, Set<Utils.Pair<String,String>> env) {
+		Set<Set<Utils.Pair<String,String>>> rv = new HashSet<>();
+		rv.add(env);
+		for (final String v : vars) {
+			for (final String a : atoms) {
+				final Utils.Pair<String,String> newMap = new Utils.Pair<>(v, a);
+				final Set<Set<Utils.Pair<String,String>>> envsFromNewMap =
+						allEnvs(Utils.setMinus(vars,Set.of(v)), atoms, Utils.union(env,Set.of(newMap)));
+				final Set<Set<Utils.Pair<String,String>>> envsWithoutTheMap =
+						allEnvs(Utils.setMinus(vars,Set.of(v)), atoms, env);
+				rv.addAll(envsFromNewMap);
+				rv.addAll(envsWithoutTheMap);
+			}
+		}
+		return rv;
+	}
 	
 	private static String prettyConjuncts(final List<String> conjuncts) {
 		if (conjuncts.isEmpty()) {
@@ -461,8 +519,6 @@ public class FormulaSeparation {
 	private static final String baseAlloyFormulaInfer = "open util/ordering[Idx]\n"
 			+ "\n"
 			+ "abstract sig Var {}\n"
-			// TODO make this a param
-			+ "one sig V, W extends Var {} {}\n"
 			+ "\n"
 			+ "abstract sig Atom {}\n"
 			+ "\n"
@@ -552,31 +608,6 @@ public class FormulaSeparation {
 			+ "one sig EmptyEnv extends Env {} {\n"
 			+ "	no maps\n"
 			+ "}\n"
-			// TODO fix this hack
-			+ "one sig Vtorm1 extends Env {} {\n"
-			+ "	maps = V->rm1\n"
-			+ "}\n"
-			+ "one sig Wtorm1 extends Env {} {\n"
-			+ "	maps = W->rm1\n"
-			+ "}\n"
-			+ "one sig Vtorm2 extends Env {} {\n"
-			+ "	maps = V->rm2\n"
-			+ "}\n"
-			+ "one sig Wtorm2 extends Env {} {\n"
-			+ "	maps = W->rm2\n"
-			+ "}\n"
-			+ "one sig Vtorm1Wtorm2 extends Env {} {\n"
-			+ "	maps = V->rm1 + W->rm2\n"
-			+ "}\n"
-			+ "one sig Vtorm2Wtorm1 extends Env {} {\n"
-			+ "	maps = V->rm2 + W->rm1\n"
-			+ "}\n"
-			+ "one sig Vtorm1Wtorm1 extends Env {} {\n"
-			+ "	maps = V->rm1 + W->rm1\n"
-			+ "}\n"
-			+ "one sig Vtorm2Wtorm2 extends Env {} {\n"
-			+ "	maps = V->rm2 + W->rm2\n"
-			+ "}\n"
 			+ "\n"
 			+ "abstract sig Idx {}\n"
 			+ "\n"
@@ -633,9 +664,6 @@ public class FormulaSeparation {
 			+ "	all nt : NegTrace | EmptyEnv->nt.lastIdx->Root not in nt.satisfies\n"
 			+ "	EmptyEnv->T0->Root in EmptyTrace.satisfies\n"
 			+ "	minsome children // smallest formula possible\n"
-			// TODO fix these hacks
-			+ "} for 7 Formula,\n"
-			+ "1 seq\n"
-			+ "\n"
-			+ "\n";
+			// TODO make the formula len a param
+			+ "} for 7 Formula,\n";
 }
