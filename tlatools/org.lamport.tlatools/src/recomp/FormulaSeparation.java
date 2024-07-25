@@ -32,8 +32,10 @@ public class FormulaSeparation {
 	private final TLC tlcSys;
 	private final TLC tlcComp;
 	private final Set<String> internalActions;
+	private final Map<String, Set<String>> sortElementsMap;
 	private final Map<String, List<String>> actionParamTypes;
 	private final int maxActParamLen;
+	private final int maxNumVarsPerType;
 	private final Set<String> qvars;
 	private final Set<Set<String>> legalEnvVarCombos;
 	private final boolean verbose;
@@ -65,6 +67,9 @@ public class FormulaSeparation {
     					(acc,s) -> Utils.union(acc, s),
     					(s1,s2) -> Utils.union(s1, s2));
     	internalActions = Utils.setMinus(tlcComp.actionsInSpec(), otherComponentActs);
+    	
+    	// obtain a map of: sort -> Set(elements/atoms in the sort)
+    	sortElementsMap = createSortElementsMap(tlcSys);
 		
 		// obtain a map of: action -> List(param type)
     	FastTool ft = (FastTool) tlcSys.tool;
@@ -74,15 +79,17 @@ public class FormulaSeparation {
 				.mapToInt(l -> l.size())
 				.max()
 				.getAsInt();
-		
-		// TODO make the number of vars a param
-		final int numParams = 2;
+
+		maxNumVarsPerType = 2; // TODO make this a param
+		final int maxNumVars = 3; // TODO make the number of vars a param
+		final int numTypes = sortElementsMap.keySet().size();
+		final int numVars = Math.min(maxNumVars, maxNumVarsPerType*numTypes);
 		final String varNameBase = "var";
-		qvars = IntStream.range(0, numParams)
+		qvars = IntStream.range(0, numVars)
 				.mapToObj(i -> varNameBase + i)
 				.collect(Collectors.toSet());
 		
-		legalEnvVarCombos = IntStream.range(0, numParams)
+		legalEnvVarCombos = IntStream.range(0, numVars)
 				.mapToObj(i ->
 					IntStream.range(0, i+1)
 						.mapToObj(j -> varNameBase + j)
@@ -205,9 +212,34 @@ public class FormulaSeparation {
 	}
 	
 	private String synthesizeFormula(final String negTrace, final List<String> posTraces) {
+		// split inference into several jobs, where each job assigns possible types to variables
+		// note: the variable orderings matter because of the legal environments we chose (see legalEnvVarCombos)
+		// so we need to consider the order of vars, not just how many of each type
+		final Set<String> allTypes = this.actionParamTypes.values()
+				.stream()
+				.map(l -> l.stream().collect(Collectors.toSet()))
+				.reduce((Set<String>)new HashSet<String>(),
+						(acc,s) -> Utils.union(acc, s),
+						(s1,s2) -> Utils.union(s1, s2));
+		
+		final Set<Map<String,String>> envVarTypes = allEnvVarTypes(allTypes);
+		Utils.assertTrue(!envVarTypes.isEmpty(), "internal error: envVarTypes is empty!");
+		
+		for (final Map<String,String> envVarType : envVarTypes) {
+			Utils.printVerbose(this.verbose, "synth with types: " + envVarType);
+			final String formula = synthesizeFormulaWithVarTypes(negTrace, posTraces, envVarType);
+			if (!formula.contains("UNSAT")) {
+				return formula;
+			}
+		}
+		
+		// if we reach this point it means that we could not synthesize a formula
+		return "UNSAT";
+	}
+	
+	private String synthesizeFormulaWithVarTypes(final String negTrace, final List<String> posTraces, final Map<String,String> envVarTypes) {
 		final String alloyFormulaInferFile = "formula_infer.als";
-
-		writeAlloyFormulaInferFile(alloyFormulaInferFile, negTrace, posTraces);
+		writeAlloyFormulaInferFile(alloyFormulaInferFile, negTrace, posTraces, envVarTypes);
 		
 		// life would be so much easier if this just worked
 		//final String formula = AlsSynthesis.INSTANCE.synthFormulaFromAls(alloyFormulaInferFile, true);
@@ -229,7 +261,8 @@ public class FormulaSeparation {
 		return formulaBuilder.toString();
 	}
 	
-	private void writeAlloyFormulaInferFile(final String fileName, final String negTrace, final List<String> posTraces) {
+	private void writeAlloyFormulaInferFile(final String fileName, final String negTrace, final List<String> posTraces,
+			final Map<String,String> envVarTypes) {
 		// TODO make the formula len a param
 		final int formulaSize = 7; // Math.min(posTraces.size() + 5, 7);
 		final String strFormulaSize = "for " + formulaSize + " Formula";
@@ -249,25 +282,11 @@ public class FormulaSeparation {
 		final String strAtomList = String.join(", ", allAtoms);
 		final String atomsDecl = "one sig " + strAtomList + " extends Atom {}";
 		
-		// create a map of sort -> elements (elements = atoms)
-		Map<String, Set<String>> sortElements = new HashMap<>();
-		for (final List<String> constList : tlcSys.tool.getModelConfig().getConstantsAsList()) {
-			if (constList.size() == 2) {
-				// constList is a CONSTANT assignment
-				final String sort = constList.get(0);
-				final Set<String> elems = Utils.toArrayList(constList.get(1).replaceAll("[{}]", "").split(","))
-						.stream() // each element in the stream is an array of elements (atoms)
-						.map(e -> e.trim())
-						.collect(Collectors.toSet());
-				sortElements.put(sort, elems);
-			}
-		}
-		
 		// define each sort as the set of its elements (elements = atoms)
-		final String strSortDecls = sortElements.keySet()
+		final String strSortDecls = this.sortElementsMap.keySet()
 				.stream()
 				.map(sort -> {
-					final Set<String> elems = sortElements.get(sort);
+					final Set<String> elems = this.sortElementsMap.get(sort);
 					final String atoms = String.join(" + ", elems);
 					final String decl = "one sig " + sort + " extends Sort {} {\n"
 							+ "	atoms = " + atoms + "\n"
@@ -306,7 +325,7 @@ public class FormulaSeparation {
 			concreteActionParams.add(new ArrayList<>());
 			for (final String paramType : paramTypes) {
 				// type = sort
-				concreteActionParams = cartProduct(concreteActionParams, sortElements.get(paramType));
+				concreteActionParams = cartProduct(concreteActionParams, this.sortElementsMap.get(paramType));
 			}
 			
 			final String strConcreteActions = concreteActionParams
@@ -366,8 +385,11 @@ public class FormulaSeparation {
 		// declare the quantifier variables
 		final String qvarDelc = "one sig " + String.join(", ", this.qvars) + " extends Var {} {}";
 		
-		// create all possible environments
-		final String strNonEmptyEnvs = allEnvs(this.qvars, allAtoms)
+		// create all possible environments such that:
+		// 1. the environment is allowed by envVarTypes
+		// 2. the environment obeys the var ordering specified in legalEnvVarCombos
+		// envVars() ensures both of these constraints
+		final String strNonEmptyEnvs = allEnvs(envVarTypes, allAtoms)
 				.stream()
 				.map(env -> {
 					final String name = env.stream().map(m -> m.first + "to" + m.second).collect(Collectors.joining());
@@ -502,18 +524,63 @@ public class FormulaSeparation {
         
         return specName;
 	}
+	
+	
+	/* Helper methods */
+	
+	private Set<Map<String,String>> allEnvVarTypes(final Set<String> allTypes) {
+		return allEnvVarTypes(allTypes, new HashMap<>(), new HashMap<>());
+	}
+	
+	private Set<Map<String,String>> allEnvVarTypes(final Set<String> allTypes, Map<String,String> envTypes,
+			Map<String,Integer> envTypeCounts) {
+		Set<Map<String,String>> cumEnvVarTypes = new HashSet<>();
+		
+		// base case
+		final boolean allVarsAssigned = this.qvars
+				.stream()
+				.allMatch(v -> envTypes.containsKey(v)); // is v assigned a value?
+		if (allVarsAssigned) {
+			cumEnvVarTypes.add(envTypes);
+			return cumEnvVarTypes;
+		}
+		
+		for (final String type : allTypes) {
+			final int numTimesTypeUsedInEnv = envTypeCounts.getOrDefault(type, 0);
+			if (numTimesTypeUsedInEnv < maxNumVarsPerType) {
+				// for each var that hasn't already been assigned a type, assign it to <type>
+				final Set<String> unassignedVars = this.qvars
+						.stream()
+						.filter(v -> !envTypes.containsKey(v))
+						.collect(Collectors.toSet());
+				for (final String var : unassignedVars) {
+					Map<String,String> newEnvTypes = new HashMap<>(envTypes);
+					newEnvTypes.put(var, type);
+					Map<String,Integer> newEnvTypeCounts = new HashMap<>(envTypeCounts);
+					newEnvTypeCounts.put(type, numTimesTypeUsedInEnv+1);
+					
+					final Set<Map<String,String>> partialEnvVarTypes = allEnvVarTypes(allTypes, newEnvTypes, newEnvTypeCounts);
+					cumEnvVarTypes.addAll(partialEnvVarTypes);
+				}
+			}
+		}
+		
+		return cumEnvVarTypes;
+	}
 
-	private Set<Set<Utils.Pair<String,String>>> allEnvs(final Set<String> vars, final Set<String> atoms) {
+	private Set<Set<Utils.Pair<String,String>>> allEnvs(final Map<String,String> envVarTypes, final Set<String> atoms) {
 		// don't include the empty env
-		Set<Set<Utils.Pair<String,String>>> envs = allEnvs(vars, atoms, new HashSet<>());
+		Set<Set<Utils.Pair<String,String>>> envs = allEnvs(envVarTypes, this.qvars, atoms, new HashSet<>());
 		envs.remove(new HashSet<>());
 		return envs;
 	}
 	
-	private Set<Set<Utils.Pair<String,String>>> allEnvs(final Set<String> vars, final Set<String> atoms, Set<Utils.Pair<String,String>> env) {
+	private Set<Set<Utils.Pair<String,String>>> allEnvs(final Map<String,String> envVarTypes, final Set<String> vars,
+			final Set<String> atoms, Set<Utils.Pair<String,String>> env) {
 		Set<Set<Utils.Pair<String,String>>> rv = new HashSet<>();
 		
-		// only compute "legal" var combos for the env. in practice this cuts down on redundant envs
+		// only compute "legal" var combos for the env. in practice this cuts down on redundant envs.
+		// more specifically, we avoid computing multiple envs that are identical up to a variable renaming.
 		final Set<String> envVars = env
 				.stream()
 				.map(p -> p.first)
@@ -522,13 +589,16 @@ public class FormulaSeparation {
 			rv.add(env);
 		}
 		
+		// build all possible envs that are allowed by the envVarTypes typing map
 		for (final String v : vars) {
-			for (final String a : atoms) {
+			final String varType = envVarTypes.get(v);
+			final Set<String> possibleAssignments = Utils.intersection(this.sortElementsMap.get(varType), atoms);
+			for (final String a : possibleAssignments) {
 				final Utils.Pair<String,String> newMap = new Utils.Pair<>(v, a);
 				final Set<Set<Utils.Pair<String,String>>> envsFromNewMap =
-						allEnvs(Utils.setMinus(vars,Set.of(v)), atoms, Utils.union(env,Set.of(newMap)));
+						allEnvs(envVarTypes, Utils.setMinus(vars,Set.of(v)), atoms, Utils.union(env,Set.of(newMap)));
 				final Set<Set<Utils.Pair<String,String>>> envsWithoutTheMap =
-						allEnvs(Utils.setMinus(vars,Set.of(v)), atoms, env);
+						allEnvs(envVarTypes, Utils.setMinus(vars,Set.of(v)), atoms, env);
 				rv.addAll(envsFromNewMap);
 				rv.addAll(envsWithoutTheMap);
 			}
@@ -554,6 +624,23 @@ public class FormulaSeparation {
 			}
 		}
 		return product;
+	}
+	
+	private static Map<String, Set<String>> createSortElementsMap(TLC tlc) {
+		// create a map of sort -> elements (elements = atoms)
+		Map<String, Set<String>> sortElements = new HashMap<>();
+		for (final List<String> constList : tlc.tool.getModelConfig().getConstantsAsList()) {
+			if (constList.size() == 2) {
+				// constList is a CONSTANT assignment
+				final String sort = constList.get(0);
+				final Set<String> elems = Utils.toArrayList(constList.get(1).replaceAll("[{}]", "").split(","))
+						.stream() // each element in the stream is an array of elements (atoms)
+						.map(e -> e.trim())
+						.collect(Collectors.toSet());
+				sortElements.put(sort, elems);
+			}
+		}
+		return sortElements;
 	}
 	
 	// TODO fix path
