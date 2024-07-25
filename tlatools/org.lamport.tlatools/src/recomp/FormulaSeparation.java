@@ -35,6 +35,7 @@ public class FormulaSeparation {
 	private final Map<String, List<String>> actionParamTypes;
 	private final int maxActParamLen;
 	private final Set<String> qvars;
+	private final Set<Set<String>> legalEnvVarCombos;
 	private final boolean verbose;
 	
 	public FormulaSeparation(final String tlaSys, final String cfgSys, final String tlaComp, final String cfgComp,
@@ -76,8 +77,16 @@ public class FormulaSeparation {
 		
 		// TODO make the number of vars a param
 		final int numParams = 2;
+		final String varNameBase = "var";
 		qvars = IntStream.range(0, numParams)
-				.mapToObj(i -> "var" + i)
+				.mapToObj(i -> varNameBase + i)
+				.collect(Collectors.toSet());
+		
+		legalEnvVarCombos = IntStream.range(0, numParams)
+				.mapToObj(i ->
+					IntStream.range(0, i+1)
+						.mapToObj(j -> varNameBase + j)
+						.collect(Collectors.toSet()))
 				.collect(Collectors.toSet());
 		
 		verbose = false;
@@ -494,16 +503,25 @@ public class FormulaSeparation {
         return specName;
 	}
 
-	private static Set<Set<Utils.Pair<String,String>>> allEnvs(final Set<String> vars, final Set<String> atoms) {
+	private Set<Set<Utils.Pair<String,String>>> allEnvs(final Set<String> vars, final Set<String> atoms) {
 		// don't include the empty env
 		Set<Set<Utils.Pair<String,String>>> envs = allEnvs(vars, atoms, new HashSet<>());
 		envs.remove(new HashSet<>());
 		return envs;
 	}
 	
-	private static Set<Set<Utils.Pair<String,String>>> allEnvs(final Set<String> vars, final Set<String> atoms, Set<Utils.Pair<String,String>> env) {
+	private Set<Set<Utils.Pair<String,String>>> allEnvs(final Set<String> vars, final Set<String> atoms, Set<Utils.Pair<String,String>> env) {
 		Set<Set<Utils.Pair<String,String>>> rv = new HashSet<>();
-		rv.add(env);
+		
+		// only compute "legal" var combos for the env. in practice this cuts down on redundant envs
+		final Set<String> envVars = env
+				.stream()
+				.map(p -> p.first)
+				.collect(Collectors.toSet());
+		if (this.legalEnvVarCombos.contains(envVars)) {
+			rv.add(env);
+		}
+		
 		for (final String v : vars) {
 			for (final String a : atoms) {
 				final Utils.Pair<String,String> newMap = new Utils.Pair<>(v, a);
