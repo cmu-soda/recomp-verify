@@ -102,7 +102,8 @@ public class FormulaSeparation {
     			+ "	 (T0->SndPreparerm1 + T1->SndPreparerm2 + T2->RcvCommitrm2 + T3->RcvCommitrm1) in path\n"
     			+ "}";*/
     	// TODO make the init trace len a param
-    	final Word<String> initTrace = RandTraceUtils.INSTANCE.randTrace(tlcSys.getLTSBuilder().toIncompleteDetAutWithoutAnErrorState(), 8);
+    	final int initTraceLen = 4;
+    	final Word<String> initTrace = RandTraceUtils.INSTANCE.randTrace(tlcSys.getLTSBuilder().toIncompleteDetAutWithoutAnErrorState(), initTraceLen);
     	final String initPosTrace = createAlloyTrace(initTrace, "PT1", "PosTrace");
     	List<String> posTraces = new ArrayList<>();
     	posTraces.add(initPosTrace);
@@ -189,7 +190,7 @@ public class FormulaSeparation {
 		final String strTrace = String.join(" + ", strTimeActs);
 		final String str = "one sig " + name + " extends " + ext + " {} {\n"
 				+ "  lastIdx = " + strLastIdx + "\n"
-				+ "  (" + strTrace + ") in path\n"
+				+ "  path = (" + strTrace + ")\n"
 				+ "}";
 		return str;
 	}
@@ -220,6 +221,10 @@ public class FormulaSeparation {
 	}
 	
 	private void writeAlloyFormulaInferFile(final String fileName, final String negTrace, final List<String> posTraces) {
+		// TODO make the formula len a param
+		final int formulaSize = 7; // Math.min(posTraces.size() + 5, 7);
+		final String strFormulaSize = "for " + formulaSize + " Formula";
+		
 		// add all atoms, i.e. the values in each constant
 		final Set<String> allAtoms = tlcSys.tool.getModelConfig().getConstantsAsList()
 				.stream()
@@ -262,12 +267,30 @@ public class FormulaSeparation {
 				})
 				.collect(Collectors.joining("\n"));
 		
+		// define each param index
+		final String strParamIndices = IntStream.range(0, maxActParamLen)
+				.mapToObj(i -> "P" + i)
+				.collect(Collectors.joining(", "));
+		final String paramIndicesDecl = "one sig " + strParamIndices + " extends ParamIdx {}";
+		
+		// add constraints for param indices
+		final String strNextMulti = IntStream.range(0, maxActParamLen-1)
+				.mapToObj(i -> "P"+i + "->P"+(i+1))
+				.collect(Collectors.joining(" + "));
+		final String strNextDef = strNextMulti.isEmpty() ? "none->none" : strNextMulti;
+		final String paramIndicesConstraints = "fact {\n"
+				+ "	ParamIdxOrder/first = P0\n"
+				+ "	ParamIdxOrder/next = " + strNextDef + "\n"
+				+ "}\n"
+				+ "";
+		
 		// define each concrete action (and its base name) in the component
 		StringBuilder concActsBuilder = new StringBuilder();
 		for (final String act : this.tlcComp.actionsInSpec()) {
 			final List<String> paramTypes = this.actionParamTypes.get(act);
+			final String maxParam = paramTypes.isEmpty() ? "no maxParam" : "maxParam = P" + (paramTypes.size()-1);
 			final String strBaseDecl = "one sig " + act + " extends BaseName {} {\n"
-					+ "	numParams = " + paramTypes.size() + "\n"
+					+ "	" + maxParam + "\n"
 					+ "}";
 			
 			Set<List<String>> concreteActionParams = new HashSet<>();
@@ -281,16 +304,16 @@ public class FormulaSeparation {
 					.stream()
 					.map(params -> {
 						final String concActName = act + String.join("", params);
-						StringBuilder paramsBuilder = new StringBuilder();
+						List<String> paramAssgs = new ArrayList<>();
 						for (int i = 0; i < params.size(); ++i) {
 							final String param = params.get(i);
-							paramsBuilder.append("	params[").append(i).append("] = ").append(param).append("\n");
+							paramAssgs.add("P"+i + "->" + param);
 						}
-						final String numParams = "	#params = " + params.size() + "\n";
+						final String strNonEmptyParams = "params = (" + String.join(" + ", paramAssgs) + ")";
+						final String strParams = params.isEmpty() ? "no params" : strNonEmptyParams;
 						return "one sig " + concActName + " extends Act {} {\n"
 								+ "	baseName = " + act + "\n"
-								+ paramsBuilder.toString()
-								+ numParams
+								+ "	" + strParams + "\n"
 								+ "}";
 					})
 					.collect(Collectors.joining("\n"));
@@ -326,8 +349,8 @@ public class FormulaSeparation {
 				.map(act -> "	no OnceVar.baseName & " + act)
 				.collect(Collectors.joining("\n"));
 		final String strIndicesFacts = "fact {\n"
-				+ "	first = T0\n"
-				+ "	next = " + strIndicesNext + "\n"
+				+ "	IdxOrder/first = T0\n"
+				+ "	IdxOrder/next = " + strIndicesNext + "\n"
 				+ strInternalActs + "\n"
 				+ "}";
 		
@@ -347,7 +370,9 @@ public class FormulaSeparation {
 				.collect(Collectors.joining("\n"));
 		
 		final String alloyFormulaInfer = baseAlloyFormulaInfer
-				+ maxActParamLen + " seq\n"
+				+ strFormulaSize + "\n"
+				+ "\n" + paramIndicesDecl + "\n"
+				+ "\n" + paramIndicesConstraints + "\n\n"
 				+ "\n" + atomsDecl + "\n"
 				+ "\n" + strSortDecls + "\n"
 				+ "\n" + concActsBuilder.toString()
@@ -516,7 +541,8 @@ public class FormulaSeparation {
 	// TODO fix path
 	private static final String alloyFormlaInferJar = "/Users/idardik/Documents/CMU/compositional_ii/alsm-formula-synthesis/bin/alsm-formula-synthesis.jar";
 	
-	private static final String baseAlloyFormulaInfer = "open util/ordering[Idx]\n"
+	private static final String baseAlloyFormulaInfer = "open util/ordering[Idx] as IdxOrder\n"
+			+ "open util/ordering[ParamIdx] as ParamIdxOrder\n"
 			+ "\n"
 			+ "abstract sig Var {}\n"
 			+ "\n"
@@ -526,15 +552,17 @@ public class FormulaSeparation {
 			+ "	atoms : some Atom\n"
 			+ "}\n"
 			+ "\n"
+			+ "abstract sig ParamIdx {}\n"
+			+ "\n"
 			+ "// base name for an action\n"
 			+ "abstract sig BaseName {\n"
-			+ "	numParams : Int\n"
+			+ "	maxParam : ParamIdx\n"
 			+ "}\n"
 			+ "\n"
 			+ "// concrete action\n"
 			+ "abstract sig Act {\n"
-			+ "	baseName : one BaseName,\n"
-			+ "	params : seq Atom\n"
+			+ "	baseName : BaseName,\n"
+			+ "	params : ParamIdx->Atom\n"
 			+ "}\n"
 			+ "\n"
 			+ "\n"
@@ -562,7 +590,7 @@ public class FormulaSeparation {
 			+ "\n"
 			+ "sig OnceVar extends Formula {\n"
 			+ "	baseName : BaseName,\n"
-			+ "	vars : seq Var\n"
+			+ "	vars : ParamIdx->Var\n"
 			+ "} {\n"
 			+ "	no children\n"
 			+ "}\n"
@@ -591,8 +619,9 @@ public class FormulaSeparation {
 			+ "	all f : Formula | f in Root.*children // all formulas must be a sub-formula of the root\n"
 			+ "	no Root.^children & Root // root appears once\n"
 			+ "	all f : Formula | f not in f.^children // eliminates cycles in formula nodes\n"
-			+ "	OnceVar.vars.elems in (Forall.var + Exists.var) // approximately: no free variables\n"
-			+ "	all f : OnceVar | #(f.vars) = f.baseName.numParams // the number of params in each action must match the action\n"
+			+ "	ParamIdx.(OnceVar.vars) in (Forall.var + Exists.var) // approximately: no free variables\n"
+			+ "	all f : OnceVar | (f.vars).Var = rangeParamIdx[f.baseName.maxParam] // the number of params in each action-var must match the action\n"
+			+ "	all v1, v2 : Var, p : ParamIdx, f : OnceVar | (p->v1 in f.vars and p->v2 in f.vars) implies v1 = v2\n"
 			+ "\n"
 			+ "	// do not quantify over a variable that's already in scope\n"
 			+ "	all f1, f2 : Forall | (f2 in f1.^children) implies not (f1.var = f2.var)\n"
@@ -621,6 +650,8 @@ public class FormulaSeparation {
 			+ "	all e : Env, i : Idx, f : FF | e->i->f not in satisfies\n"
 			+ "	all e : Env, i : Idx, f : Not | e->i->f in satisfies iff (e->i->f.child not in satisfies)\n"
 			+ "	all e : Env, i : Idx, f : Implies | e->i->f in satisfies iff (e->i->f.left in satisfies implies e->i->f.right in satisfies)\n"
+			//+ "	all e : Env, i : Idx, f : And | e->i->f in satisfies iff (e->i->f.left in satisfies and e->i->f.right in satisfies)\n"
+			//+ "	all e : Env, i : Idx, f : Or | e->i->f in satisfies iff (e->i->f.left in satisfies or e->i->f.right in satisfies)\n"
 			+ "	all e : Env, i : Idx, f : OnceVar | e->i->f in satisfies iff\n"
 			+ "		((some a : Act | concreteAct[a,e,f] and i->a in path) or (some i' : Idx | i'->i in next and e->i'->f in satisfies))\n"
 			+ "	all e : Env, i : Idx, f : Forall | e->i->f in satisfies iff\n"
@@ -628,18 +659,10 @@ public class FormulaSeparation {
 			+ "	all e : Env, i : Idx, f : Exists | e->i->f in satisfies iff\n"
 			+ "		(some x : f.sort.atoms | some e' : Env | pushEnv[e',e,f.var,x] and e'->i->f.matrix in satisfies)\n"
 			+ "	all e : Env, i : Idx, f : Root | e->i->f in satisfies iff e->i->f.children in satisfies\n"
-			+ "\n"
-			+ "	// rule: only one action can happen at a given index\n"
-			+ "	all a1, a2 : Act, i : Idx | (i->a1 in path and i->a2 in path) implies a1 = a2\n"
-			+ "\n"
-			+ "	// rule: maps (in each environment) is a function\n"
-			+ "	all e : Env, v : Var, s,t : Atom | (v->s in e.maps and v->t in e.maps) implies s = t\n"
 			+ "}\n"
 			+ "\n"
 			+ "pred concreteAct[a : Act, e : Env, f : OnceVar] {\n"
-			+ "	f.baseName = a.baseName and\n"
-			+ "	all j : (f.vars.inds + a.params.inds) |\n"
-			+ "		let m = f.vars[j]->a.params[j] | some m and m in e.maps\n"
+			+ "	f.baseName = a.baseName and (~(f.vars)).(a.params) = e.maps\n"
 			+ "}\n"
 			+ "\n"
 			+ "pred pushEnv[env', env : Env, v : Var, x : Atom] {\n"
@@ -647,7 +670,11 @@ public class FormulaSeparation {
 			+ "}\n"
 			+ "\n"
 			+ "fun indices[t : Trace] : set Idx {\n"
-			+ "	{ i : Idx | t.lastIdx in i.*next }\n"
+			+ "	t.lastIdx.*(~IdxOrder/next)\n"
+			+ "}\n"
+			+ "\n"
+			+ "fun rangeParamIdx[p : ParamIdx] : set ParamIdx {\n"
+			+ "	p.*(~ParamIdxOrder/next)\n"
 			+ "}\n"
 			+ "\n"
 			+ "abstract sig PosTrace extends Trace {} {}\n"
@@ -661,9 +688,8 @@ public class FormulaSeparation {
 			+ "run {\n"
 			+ "	// find a formula that separates \"good\" traces from \"bad\" ones\n"
 			+ "	all pt : PosTrace | EmptyEnv->indices[pt]->Root in pt.satisfies\n"
-			+ "	all nt : NegTrace | EmptyEnv->nt.lastIdx->Root not in nt.satisfies\n"
-			+ "	EmptyEnv->T0->Root in EmptyTrace.satisfies\n"
+			+ "	all nt : NegTrace | no (EmptyEnv->nt.lastIdx->Root & nt.satisfies)\n"
+			+ "	EmptyEnv->T0->Root in EmptyTrace.satisfies // the formula must satisfy the empty trace\n"
 			+ "	minsome children // smallest formula possible\n"
-			// TODO make the formula len a param
-			+ "} for 7 Formula,\n";
+			+ "}\n";
 }
