@@ -3,6 +3,7 @@ package recomp;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -19,8 +20,8 @@ public class FormulaSynthWorker implements Runnable {
 	private final FormulaSynth formulaSynth;
 	private final Map<String,String> envVarTypes;
 	private final int id;
-	private final String negTrace;
-	private final List<String> posTraces;
+	private final AlloyTrace negTrace;
+	private final List<AlloyTrace> posTraces;
 	private final TLC tlcSys;
 	private final TLC tlcComp;
 	private final Set<String> internalActions;
@@ -37,7 +38,7 @@ public class FormulaSynthWorker implements Runnable {
 	private boolean globalTaskCompleted;
 
 	public FormulaSynthWorker(FormulaSynth formulaSynth, Map<String,String> envVarTypes, int id,
-			String negTrace, List<String> posTraces,
+			AlloyTrace negTrace, List<AlloyTrace> posTraces,
 			TLC tlcSys, TLC tlcComp, Set<String> internalActions,
 			Map<String, Set<String>> sortElementsMap, Map<String, List<String>> actionParamTypes,
 			int maxActParamLen, Set<String> qvars, Set<Set<String>> legalEnvVarCombos) {
@@ -94,13 +95,13 @@ public class FormulaSynthWorker implements Runnable {
 		}
 	}
 	
-	private String synthesizeFormulaWithVarTypes(final String negTrace, final List<String> posTraces) {
+	private String synthesizeFormulaWithVarTypes(final AlloyTrace negTrace, final List<AlloyTrace> posTraces) {
 		final String alloyFormulaInferFile = "formula_infer_" + id + ".als";
 		writeAlloyFormulaInferFile(alloyFormulaInferFile, negTrace, posTraces, this.envVarTypes);
 		
 		StringBuilder formulaBuilder = new StringBuilder();
 		try {
-			final String[] cmd = {"java", "-Xmx25G", "-jar", alloyFormlaInferJar, "-f", alloyFormulaInferFile, "--tla"};
+			final String[] cmd = {"java", "-Djava.library.path=" + openWboLibPath, "-Xmx25G", "-jar", alloyFormlaInferJar, "-f", alloyFormulaInferFile, "--tla"};
 			this.process = createProcess(cmd);
 			if (this.process == null) {
 				// in this case, the worker has been killed so we simply return
@@ -119,7 +120,7 @@ public class FormulaSynthWorker implements Runnable {
 		return formulaBuilder.toString();
 	}
 	
-	private void writeAlloyFormulaInferFile(final String fileName, final String negTrace, final List<String> posTraces,
+	private void writeAlloyFormulaInferFile(final String fileName, final AlloyTrace negTrace, final List<AlloyTrace> posTraces,
 			final Map<String,String> envVarTypes) {
 		// TODO make the formula len a param
 		final int formulaSize = 7; // Math.min(posTraces.size() + 5, 7);
@@ -171,6 +172,7 @@ public class FormulaSynthWorker implements Runnable {
 				+ "";
 		
 		// define each concrete action (and its base name) in the component
+		Map<String,String> actToBaseName = new HashMap<>();
 		StringBuilder concActsBuilder = new StringBuilder();
 		for (final String act : this.tlcComp.actionsInSpec()) {
 			final List<String> paramTypes = this.actionParamTypes.get(act);
@@ -197,8 +199,9 @@ public class FormulaSynthWorker implements Runnable {
 						}
 						final String strNonEmptyParams = "params = (" + String.join(" + ", paramAssgs) + ")";
 						final String strParams = params.isEmpty() ? "no params" : strNonEmptyParams;
+						actToBaseName.put(concActName, act);
 						return "one sig " + concActName + " extends Act {} {\n"
-								+ "	baseName = " + act + "\n"
+								//+ "	baseName = " + act + "\n"
 								+ "	" + strParams + "\n"
 								+ "}";
 					})
@@ -208,16 +211,9 @@ public class FormulaSynthWorker implements Runnable {
 		}
 		
 		// determine the max length of the traces
-		final int maxTraceLen = Utils.union(posTraces.stream().collect(Collectors.toSet()), Utils.setOf(negTrace))
-				.stream()
-				.map(t -> Utils.toSet(t.split("\n")))
-				.reduce((Set<String>)new HashSet<String>(),
-						(acc,s) -> Utils.union(acc, s),
-						(s1,s2) -> Utils.union(s1, s2))
-				.stream()
-				.filter(l -> l.contains("lastIdx = T"))
-				.map(s -> s.replace("lastIdx = T", "").trim())
-				.mapToInt(s -> Integer.parseInt(s))
+		final Set<AlloyTrace> allTraces = Utils.union(posTraces.stream().collect(Collectors.toSet()), Utils.setOf(negTrace));
+		final int maxTraceLen = allTraces.stream()
+				.mapToInt(t -> t.lastIdx())
 				.max()
 				.getAsInt();
 		
@@ -240,6 +236,20 @@ public class FormulaSynthWorker implements Runnable {
 				+ strInternalActs + "\n"
 				+ "}";
 		
+		// declare facts about the variable types
+		final String envVarForallFacts = this.envVarTypes.keySet()
+				.stream()
+				.map(v -> "	all f : Forall | (f.var = " + v + ") implies (f.sort = " + this.envVarTypes.get(v) + ")")
+				.collect(Collectors.joining("\n"));
+		final String envVarExistsFacts = this.envVarTypes.keySet()
+				.stream()
+				.map(v -> "	all f : Exists | (f.var = " + v + ") implies (f.sort = " + this.envVarTypes.get(v) + ")")
+				.collect(Collectors.joining("\n"));
+		final String envVarFacts = "fact {\n"
+				+ envVarForallFacts + "\n"
+				+ envVarExistsFacts + "\n"
+				+ "}";
+		
 		// declare the quantifier variables
 		final String qvarDelc = "one sig " + String.join(", ", this.qvars) + " extends Var {} {}";
 		
@@ -247,16 +257,52 @@ public class FormulaSynthWorker implements Runnable {
 		// 1. the environment is allowed by envVarTypes
 		// 2. the environment obeys the var ordering specified in legalEnvVarCombos
 		// envVars() ensures both of these constraints
-		final String strNonEmptyEnvs = allEnvs(envVarTypes, allAtoms)
+		final String strNonEmptyEnvsDecls = allEnvs(envVarTypes, allAtoms)
+				.stream()
+				.map(env -> {
+					final String name = env.stream().map(m -> m.first + "to" + m.second).collect(Collectors.joining());
+					return "one sig " + name + " extends Env {} {}";
+				})
+				.collect(Collectors.joining("\n"));
+		
+		// partial instances for optimization
+		final String lastIdxPartialInstance = "lastIdx = (EmptyTrace->T0) + " +
+				allTraces.stream()
+					.map(t -> "(" + t.name() + "->" + t.alloyLastIdx() + ")")
+					.collect(Collectors.joining(" + "));
+		final String pathPartialInstance = "path = " +
+				allTraces.stream()
+					.map(t -> "(" + t.name() + " -> " + t.path() + ")")
+					.collect(Collectors.joining(" +\n		"));
+		final String strNonEmptyEnvsPartialInstance = "maps = " +
+				allEnvs(envVarTypes, allAtoms)
 				.stream()
 				.map(env -> {
 					final String name = env.stream().map(m -> m.first + "to" + m.second).collect(Collectors.joining());
 					final String maps = env.stream().map(m -> m.first + "->" + m.second).collect(Collectors.joining(" + "));
-					return "one sig " + name + " extends Env {} {\n"
+					return name + "->(" + maps + ")";
+					/*return "one sig " + name + " extends Env {} {\n"
 						+ "	maps = " + maps + "\n"
-						+ "}";
+						+ "}";*/
 				})
-				.collect(Collectors.joining("\n"));
+				.collect(Collectors.joining(" +\n		"));
+		final String baseNamesPartialInstance = "baseName = " +
+				actToBaseName.keySet()
+				.stream()
+				.map(a -> a + "->" + actToBaseName.get(a))
+				.collect(Collectors.joining(" +\n		"));
+		final String partialInstance = "fact PartialInstance {\n" +
+					"	" + lastIdxPartialInstance + "\n\n" +
+					"	" + pathPartialInstance + "\n\n" +
+					"	" + strNonEmptyEnvsPartialInstance + "\n\n" +
+					"	" + baseNamesPartialInstance + "\n" +
+					"}";
+		
+		// pos trace delcs
+		final List<String> posTraceDecls = posTraces
+				.stream()
+				.map(t -> t.toString())
+				.collect(Collectors.toList());
 		
 		final String alloyFormulaInfer = baseAlloyFormulaInfer
 				+ strFormulaSize + "\n"
@@ -267,10 +313,12 @@ public class FormulaSynthWorker implements Runnable {
 				+ "\n" + concActsBuilder.toString()
 				+ "\n" + strIndicesDecl + "\n"
 				+ "\n" + strIndicesFacts + "\n\n"
+				//+ "\n" + envVarFacts + "\n\n" // overall, this makes things slower
 				+ "\n" + qvarDelc + "\n\n"
-				+ "\n" + strNonEmptyEnvs + "\n\n"
+				+ "\n" + strNonEmptyEnvsDecls + "\n\n"
+				+ "\n" + partialInstance + "\n\n"
 				+ "\n" + negTrace + "\n\n"
-				+ String.join("\n", posTraces) + "\n";
+				+ String.join("\n", posTraceDecls) + "\n";
 		Utils.writeFile(fileName, alloyFormulaInfer);
 	}
 
@@ -329,6 +377,7 @@ public class FormulaSynthWorker implements Runnable {
 	
 	// TODO fix path
 	private static final String alloyFormlaInferJar = "/Users/idardik/Documents/CMU/compositional_ii/alsm-formula-synthesis/bin/alsm-formula-synthesis.jar";
+	private static final String openWboLibPath = "/Users/idardik/Documents/CMU/compositional_ii/alsm-formula-synthesis/lib/";
 	
 	private static final String baseAlloyFormulaInfer = "open util/ordering[Idx] as IdxOrder\n"
 			+ "open util/ordering[ParamIdx] as ParamIdxOrder\n"

@@ -118,8 +118,8 @@ public class FormulaSeparation {
     	// TODO make the init trace len a param
     	final int initTraceLen = 4;
     	final Word<String> initTrace = RandTraceUtils.INSTANCE.randTrace(tlcSys.getLTSBuilder().toIncompleteDetAutWithoutAnErrorState(), initTraceLen);
-    	final String initPosTrace = createAlloyTrace(initTrace, "PT1", "PosTrace");
-    	List<String> posTraces = new ArrayList<>();
+    	final AlloyTrace initPosTrace = createAlloyTrace(initTrace, "PT1", "PosTrace");
+    	List<AlloyTrace> posTraces = new ArrayList<>();
     	posTraces.add(initPosTrace);
     	
     	List<String> invariants = new ArrayList<>();
@@ -133,8 +133,8 @@ public class FormulaSeparation {
     		// the negative trace
     		final String invariant = prettyConjuncts(invariants);
         	final String tlaCompHV = writeHistVarsSpec(tlaComp, cfgComp, invariant, true);
-        	final String negTrace = isCandSepInvariant(tlaCompHV, cfgNegTraces, "NT", "NegTrace");
-    		formulaSeparates = negTrace.equals("TRUE");
+        	final AlloyTrace negTrace = isCandSepInvariant(tlaCompHV, cfgNegTraces, "NT", "NegTrace");
+    		formulaSeparates = !negTrace.hasError();
     		Utils.printVerbose(verbose, "negTrace:\n" + negTrace);
 
     		// use the negative trace and all existing positive traces to generate a formula
@@ -147,8 +147,8 @@ public class FormulaSeparation {
     			final int ptNum = posTraces.size() + 1;
     			final String ptName = "PT" + ptNum;
     	    	final String tlaSysHV = writeHistVarsSpec(tlaSys, cfgSys, formula, false);
-    			final String posTrace = isCandSepInvariant(tlaSysHV, cfgPosTraces, ptName, "PosTrace");
-    			isInvariant = posTrace.equals("TRUE");
+    			final AlloyTrace posTrace = isCandSepInvariant(tlaSysHV, cfgPosTraces, ptName, "PosTrace");
+    			isInvariant = !posTrace.hasError();
     			
     			System.out.println("Synthesized: " + formula);
     			if (isInvariant) {
@@ -167,20 +167,20 @@ public class FormulaSeparation {
     	return prettyConjuncts(invariants);
 	}
 	
-	private String isCandSepInvariant(final String tla, final String cfg, final String name, final String ext) {
+	private AlloyTrace isCandSepInvariant(final String tla, final String cfg, final String name, final String ext) {
     	TLC tlc = new TLC();
     	tlc.modelCheck(tla, cfg);
     	final LTS<Integer, String> lts = tlc.getLTSBuilder().toIncompleteDetAutIncludingAnErrorState();
     	
     	if (SafetyUtils.INSTANCE.ltsIsSafe(lts)) {
-    		return "TRUE";
+    		return new AlloyTrace();
     	}
 		
 		// if candSep isn't an invariant, return a trace that should be covered by the formula
 		return createAlloyTrace(SafetyUtils.INSTANCE.findErrorTrace(lts), name, ext);
 	}
 	
-	private String createAlloyTrace(final Word<String> word, final String name, final String ext) {
+	private AlloyTrace createAlloyTrace(final Word<String> word, final String name, final String ext) {
 		// use the alphabet for the component
 		final Set<String> alphabet = this.tlcComp.actionsInSpec();
 		
@@ -192,24 +192,21 @@ public class FormulaSeparation {
 				})
 				.collect(Collectors.toList());
 		
-		String strLastIdx = "";
-		List<String> strTimeActs = new ArrayList<>();
-		for (int i = 0; i < trace.size(); ++i) {
-			final String time = "T" + i;
-			final String act = trace.get(i).replace(".", "");
-			final String timeAct = time + "->" + act;
-			strTimeActs.add(timeAct);
-			strLastIdx = time;
-		}
-		final String strTrace = String.join(" + ", strTimeActs);
-		final String str = "one sig " + name + " extends " + ext + " {} {\n"
-				+ "  lastIdx = " + strLastIdx + "\n"
-				+ "  path = (" + strTrace + ")\n"
-				+ "}";
-		return str;
+		final int lastIdx = trace.size() - 1;
+		final String alloyLastIdx = "T" + lastIdx;
+		final String path = IntStream.range(0, trace.size())
+				.mapToObj(i -> {
+					final String time = "T" + i;
+					final String act = trace.get(i).replace(".", "");
+					return time + "->" + act;
+				})
+				.collect(Collectors.joining(" + "));
+		final String pathParens = "(" + path + ")";
+		
+		return new AlloyTrace(name, ext, lastIdx, alloyLastIdx, pathParens);
 	}
 	
-	private String synthesizeFormula(final String negTrace, final List<String> posTraces) {
+	private String synthesizeFormula(final AlloyTrace negTrace, final List<AlloyTrace> posTraces) {
 		// split inference into several jobs, where each job assigns possible types to variables
 		// note: the variable orderings matter because of the legal environments we chose (see legalEnvVarCombos)
 		// so we need to consider the order of vars, not just how many of each type

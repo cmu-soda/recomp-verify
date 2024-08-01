@@ -46,7 +46,7 @@ public class FormulaSynth {
 	 * @return
 	 */
 	public String synthesizeFormula(Set<Map<String,String>> envVarTypes,
-			String negTrace, List<String> posTraces,
+			AlloyTrace negTrace, List<AlloyTrace> posTraces,
 			TLC tlcSys, TLC tlcComp, Set<String> internalActions,
 			Map<String, Set<String>> sortElementsMap, Map<String, List<String>> actionParamTypes,
 			int maxActParamLen, Set<String> qvars, Set<Set<String>> legalEnvVarCombos) {
