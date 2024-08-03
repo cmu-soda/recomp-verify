@@ -52,5 +52,5 @@ The model checker has been tested exclusively on a MacBook Pro with an M1 proces
 ## Known Issues
 - The Python script must be run in the same directory that contains the TLA+ file that is being model checked.
 - The tool does not give good error messages when a TLA+ spec is malformed; a work-around is to run TLC on a spec for a better error message to see why it is malformed.
-- The model checker works on a subset of the TLA+ language; we will post a link to our paper that formalizes this subset soon :D
+- The model checker works on a subset of the TLA+ language; please see our paper for the precise definition of this subset.
 - When running in parallel mode, the script will not clean up all processes that it spawns. You may need to manually kill processes that the script spawns using ``kill -9``.
