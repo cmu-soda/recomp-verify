@@ -46,19 +46,21 @@ sig Implies extends Formula {
 	children = left + right
 }
 
-abstract sig Fluent extends Formula {
+sig Fluent extends Formula {
     initially : Bool,
     initFl : set BaseName,
     termFl : set BaseName,
 	vars : ParamIdx->Var
 } {
     no children
+    no initFl & termFl
 }
+/*
 sig OnceRcvCommitFluent extends Fluent {} {
     initially = False
     initFl = RcvCommit
     termFl = none
-}
+}*/
 
 sig Forall extends Formula {
 	var : Var,
@@ -172,7 +174,7 @@ run {
 	EmptyEnv->T0->Root in EmptyTrace.satisfies // the formula must satisfy the empty trace
 	minsome children // smallest formula possible
 }
-for 4 Formula
+for 7 Formula
 
 one sig P0 extends ParamIdx {}
 
@@ -243,6 +245,8 @@ one sig T0, T1 extends Idx {}
 fact {
 	IdxOrder/first = T0
 	IdxOrder/next = T0->T1
+    no Fluent.initFl & SilentAbort
+    no Fluent.termFl & SilentAbort
 }
 
 

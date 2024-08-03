@@ -1,4 +1,5 @@
-open util/ordering[Idx]
+open util/ordering[Idx] as IdxOrder
+open util/ordering[ParamIdx] as ParamIdxOrder
 
 abstract sig Var {}
 
@@ -8,15 +9,17 @@ abstract sig Sort {
 	atoms : some Atom
 }
 
+abstract sig ParamIdx {}
+
 // base name for an action
 abstract sig BaseName {
-	numParams : Int
+	maxParam : ParamIdx
 }
 
 // concrete action
 abstract sig Act {
-	baseName : one BaseName,
-	params : seq Atom
+	baseName : BaseName,
+	params : ParamIdx->Atom
 }
 
 
@@ -44,7 +47,7 @@ sig Implies extends Formula {
 
 sig OnceVar extends Formula {
 	baseName : BaseName,
-	vars : seq Var
+	vars : ParamIdx->Var
 } {
 	no children
 }
@@ -73,8 +76,9 @@ fact {
 	all f : Formula | f in Root.*children // all formulas must be a sub-formula of the root
 	no Root.^children & Root // root appears once
 	all f : Formula | f not in f.^children // eliminates cycles in formula nodes
-	OnceVar.vars.elems in (Forall.var + Exists.var) // approximately: no free variables
-	all f : OnceVar | #(f.vars) = f.baseName.numParams // the number of params in each action must match the action
+	ParamIdx.(OnceVar.vars) in (Forall.var + Exists.var) // approximately: no free variables
+	all f : OnceVar | (f.vars).Var = rangeParamIdx[f.baseName.maxParam] // the number of params in each action-var must match the action
+	all v1, v2 : Var, p : ParamIdx, f : OnceVar | (p->v1 in f.vars and p->v2 in f.vars) implies v1 = v2
 
 	// do not quantify over a variable that's already in scope
 	all f1, f2 : Forall | (f2 in f1.^children) implies not (f1.var = f2.var)
@@ -110,18 +114,10 @@ abstract sig Trace {
 	all e : Env, i : Idx, f : Exists | e->i->f in satisfies iff
 		(some x : f.sort.atoms | some e' : Env | pushEnv[e',e,f.var,x] and e'->i->f.matrix in satisfies)
 	all e : Env, i : Idx, f : Root | e->i->f in satisfies iff e->i->f.children in satisfies
-
-	// rule: only one action can happen at a given index
-	all a1, a2 : Act, i : Idx | (i->a1 in path and i->a2 in path) implies a1 = a2
-
-	// rule: maps (in each environment) is a function
-	all e : Env, v : Var, s,t : Atom | (v->s in e.maps and v->t in e.maps) implies s = t
 }
 
 pred concreteAct[a : Act, e : Env, f : OnceVar] {
-	f.baseName = a.baseName and
-	all j : (f.vars.inds + a.params.inds) |
-		let m = f.vars[j]->a.params[j] | some m and m in e.maps
+	f.baseName = a.baseName and (~(f.vars)).(a.params) = e.maps
 }
 
 pred pushEnv[env', env : Env, v : Var, x : Atom] {
@@ -129,7 +125,11 @@ pred pushEnv[env', env : Env, v : Var, x : Atom] {
 }
 
 fun indices[t : Trace] : set Idx {
-	{ i : Idx | t.lastIdx in i.*next }
+	t.lastIdx.*(~IdxOrder/next)
+}
+
+fun rangeParamIdx[p : ParamIdx] : set ParamIdx {
+	p.*(~ParamIdxOrder/next)
 }
 
 abstract sig PosTrace extends Trace {} {}
@@ -143,11 +143,20 @@ one sig EmptyTrace extends Trace {} {
 run {
 	// find a formula that separates "good" traces from "bad" ones
 	all pt : PosTrace | EmptyEnv->indices[pt]->Root in pt.satisfies
-	all nt : NegTrace | EmptyEnv->nt.lastIdx->Root not in nt.satisfies
-	EmptyEnv->T0->Root in EmptyTrace.satisfies
+	all nt : NegTrace | no (EmptyEnv->nt.lastIdx->Root & nt.satisfies)
+	EmptyEnv->T0->Root in EmptyTrace.satisfies // the formula must satisfy the empty trace
 	minsome children // smallest formula possible
-} for 7 Formula,
-1 seq
+}
+for 7 Formula
+
+one sig P0 extends ParamIdx {}
+
+fact {
+	ParamIdxOrder/first = P0
+	ParamIdxOrder/next = none->none
+}
+
+
 
 one sig rm2, rm1 extends Atom {}
 
@@ -155,99 +164,61 @@ one sig RMs extends Sort {} {
 	atoms = rm2 + rm1
 }
 
-one sig SndAbort extends BaseName {} {
-	numParams = 1
-}
-one sig SndAbortrm1 extends Act {} {
-	baseName = SndAbort
-	params[0] = rm1
-	#params = 1
-}
-one sig SndAbortrm2 extends Act {} {
-	baseName = SndAbort
-	params[0] = rm2
-	#params = 1
-}
-
-one sig RcvPrepare extends BaseName {} {
-	numParams = 1
-}
-one sig RcvPreparerm1 extends Act {} {
-	baseName = RcvPrepare
-	params[0] = rm1
-	#params = 1
-}
-one sig RcvPreparerm2 extends Act {} {
-	baseName = RcvPrepare
-	params[0] = rm2
-	#params = 1
-}
-
-one sig SndCommit extends BaseName {} {
-	numParams = 1
-}
-one sig SndCommitrm1 extends Act {} {
-	baseName = SndCommit
-	params[0] = rm1
-	#params = 1
-}
-one sig SndCommitrm2 extends Act {} {
-	baseName = SndCommit
-	params[0] = rm2
-	#params = 1
-}
-
 one sig SndPrepare extends BaseName {} {
-	numParams = 1
+	maxParam = P0
 }
 one sig SndPreparerm1 extends Act {} {
 	baseName = SndPrepare
-	params[0] = rm1
-	#params = 1
+	params = (P0->rm1)
 }
 one sig SndPreparerm2 extends Act {} {
 	baseName = SndPrepare
-	params[0] = rm2
-	#params = 1
+	params = (P0->rm2)
+}
+
+one sig SilentAbort extends BaseName {} {
+	maxParam = P0
+}
+one sig SilentAbortrm1 extends Act {} {
+	baseName = SilentAbort
+	params = (P0->rm1)
+}
+one sig SilentAbortrm2 extends Act {} {
+	baseName = SilentAbort
+	params = (P0->rm2)
 }
 
 one sig RcvAbort extends BaseName {} {
-	numParams = 1
+	maxParam = P0
 }
 one sig RcvAbortrm1 extends Act {} {
 	baseName = RcvAbort
-	params[0] = rm1
-	#params = 1
+	params = (P0->rm1)
 }
 one sig RcvAbortrm2 extends Act {} {
 	baseName = RcvAbort
-	params[0] = rm2
-	#params = 1
+	params = (P0->rm2)
 }
 
 one sig RcvCommit extends BaseName {} {
-	numParams = 1
+	maxParam = P0
 }
 one sig RcvCommitrm1 extends Act {} {
 	baseName = RcvCommit
-	params[0] = rm1
-	#params = 1
+	params = (P0->rm1)
 }
 one sig RcvCommitrm2 extends Act {} {
 	baseName = RcvCommit
-	params[0] = rm2
-	#params = 1
+	params = (P0->rm2)
 }
 
 
-one sig T0, T1, T2, T3, T4, T5, T6, T7 extends Idx {}
+one sig T0, T1, T2 extends Idx {}
 
 fact {
-	first = T0
-	next = T0->T1 + T1->T2 + T2->T3 + T3->T4 + T4->T5 + T5->T6 + T6->T7
-	no OnceVar.baseName & SndPrepare
-	no OnceVar.baseName & RcvAbort
-	no OnceVar.baseName & RcvCommit
+	IdxOrder/first = T0
+	IdxOrder/next = T0->T1 + T1->T2
+	no OnceVar.baseName & SilentAbort
 }
 
 
@@ -257,14 +228,8 @@ one sig var1, var0 extends Var {} {}
 one sig var1torm2var0torm1 extends Env {} {
 	maps = var1->rm2 + var0->rm1
 }
-one sig var1torm1 extends Env {} {
-	maps = var1->rm1
-}
 one sig var1torm1var0torm2 extends Env {} {
 	maps = var1->rm1 + var0->rm2
-}
-one sig var1torm2 extends Env {} {
-	maps = var1->rm2
 }
 one sig var0torm2 extends Env {} {
 	maps = var0->rm2
@@ -281,15 +246,15 @@ one sig var1torm2var0torm2 extends Env {} {
 
 
 one sig NT extends NegTrace {} {
-  lastIdx = T7
-  (T0->SndPreparerm1 + T1->SndPreparerm2 + T2->RcvPreparerm1 + T3->SndAbortrm1 + T4->RcvAbortrm1 + T5->RcvPreparerm2 + T6->SndCommitrm2 + T7->RcvCommitrm2) in path
+  lastIdx = T1
+  path = (T0->RcvCommitrm1 + T1->SilentAbortrm2)
 }
 
 one sig PT1 extends PosTrace {} {
-  lastIdx = T7
-  (T0->SndPreparerm1 + T1->SndPreparerm2 + T2->RcvPreparerm1 + T3->RcvPreparerm2 + T4->SndAbortrm2 + T5->RcvAbortrm1 + T6->RcvAbortrm2 + T7->SndAbortrm2) in path
+  lastIdx = T1
+  path = (T0->RcvAbortrm1 + T1->SilentAbortrm2)
 }
 one sig PT2 extends PosTrace {} {
-  lastIdx = T4
-  (T0->SndPreparerm1 + T1->SndPreparerm2 + T2->RcvPreparerm1 + T3->RcvPreparerm2 + T4->SndCommitrm1) in path
+  lastIdx = T2
+  path = (T0->SndPreparerm1 + T1->SndPreparerm2 + T2->RcvCommitrm2)
 }
