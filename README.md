@@ -1,7 +1,7 @@
-# Recomp-Verify
+# Recomp-Verify -- FMCAD 2024
 
 Recomp-Verify is a model checker for safety properties in TLA+.
-The tool is currently a research prototype.
+The tool is the research prototype from our FMCAD 2024 paper [Recomposition: A New Technique for Efficient Compositional Verification](https://iandardik.github.io/assets/papers/recomp_fmcad24.pdf).
 
 ## Getting Started
 
