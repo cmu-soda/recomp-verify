@@ -46,12 +46,15 @@ public class AlloyTrace {
 		return this.path;
 	}
 	
+	public String fullSigString() {
+		return "one sig " + this.name + " extends " + this.ext + " {} {\n"
+			+ "	lastIdx = " + this.alloyLastIdx + "\n"
+			+ "	path = " + this.path + "\n"
+			+ "}";
+	}
+	
 	@Override
 	public String toString() {
 		return "one sig " + this.name + " extends " + this.ext + " {} {}";
-		/*return "one sig " + this.name + " extends " + this.ext + " {} {\n"
-				+ "	lastIdx = " + this.alloyLastIdx + "\n"
-				+ "	path = " + this.path + "\n"
-				+ "}";*/
 	}
 }

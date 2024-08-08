@@ -46,15 +46,40 @@ sig Implies extends Formula {
 	children = left + right
 }
 
+sig FlSymAction {
+    baseName : BaseName,
+
+    // actToFlParamsMap maps action-params to fluent-params
+    // in other words, actToFlParamsMap decides which of the action-params will be
+    // used for setting a boolean value of the state variable (representing the
+    // fluent) in the _hist TLA+ code.
+    actToFlParamsMap : set(ParamIdx->ParamIdx)
+} {
+    // actToFlParamsMap is an injective function
+    all x1,x2,y1,y2 : ParamIdx |
+        (x1->y1 in actToFlParamsMap and x2->y2 in actToFlParamsMap) implies (x1->y1 = x2->y2 or (not x1=x2 and not y1=y2))
+
+    // domain(actToFlParamsMap) \subseteq paramIdxs(baseName)
+    actToFlParamsMap.ParamIdx in baseName.paramIdxs
+}
+
 sig Fluent extends Formula {
     initially : Bool,
-    initFl : set BaseName,
-    termFl : set BaseName,
+    initFl : set FlSymAction,
+    termFl : set FlSymAction,
+
+    // vars represents the parameters (including the ordering) to the fluent itself
 	vars : ParamIdx->Var
 } {
     no children
-    no initFl & termFl
     some initFl + termFl
+
+    // a base name can only occur once across all fluents; this also implies that
+    // initFl and termFl are "mutually exclusive" wrt base names.
+    all s1,s2 : (initFl + termFl) | (s1.baseName = s2.baseName) implies (s1 = s2)
+
+    // each fluent must accept all the fluent params in vars
+    all s : (initFl + termFl) | ParamIdx.(s.actToFlParamsMap) = vars.Var
 }
 
 sig Forall extends Formula {
@@ -83,8 +108,8 @@ fact {
 	all f : Formula | f not in f.^children // eliminates cycles in formula nodes
 
 	ParamIdx.(Fluent.vars) in (Forall.var + Exists.var) // approximately: no free variables
-	all f : Fluent | (f.vars).Var = (f.initFl.paramIdxs + f.termFl.paramIdxs) // the number of params in each action-var must match the action
-	all v1, v2 : Var, p : ParamIdx, f : Fluent | (p->v1 in f.vars and p->v2 in f.vars) implies v1 = v2
+	//all f : Fluent | (f.vars).Var = (f.initFl.paramIdxs + f.termFl.paramIdxs) // the number of params in each action-var must match the action
+	//all v1, v2 : Var, p : ParamIdx, f : Fluent | (p->v1 in f.vars and p->v2 in f.vars) implies v1 = v2
 
 	// do not quantify over a variable that's already in scope
 	all f1, f2 : Forall | (f2 in f1.^children) implies not (f1.var = f2.var)
@@ -136,12 +161,14 @@ abstract sig Trace {
 
 // does this action initiate the fluent?
 pred isInitAct[a : Act, e : Env, f : Fluent] {
-	a.baseName in f.initFl and (~(f.vars)).(a.params) = e.maps
+    some s : f.initFl |
+        a.baseName = s.baseName and (~(f.vars)).(~(s.actToFlParamsMap)).(a.params) in e.maps
 }
 
 // does this action terminate the fluent?
 pred isTermAct[a : Act, e : Env, f : Fluent] {
-	a.baseName in f.termFl and (~(f.vars)).(a.params) = e.maps
+    some s : f.termFl |
+        a.baseName = s.baseName and (~(f.vars)).(~(s.actToFlParamsMap)).(a.params) in e.maps
 }
 
 pred pushEnv[env', env : Env, v : Var, x : Atom] {
@@ -171,7 +198,7 @@ run {
 	EmptyEnv->T0->Root in EmptyTrace.satisfies // the formula must satisfy the empty trace
 	minsome children // smallest formula possible
 }
-for 7 Formula
+for 7 Formula, 3 FlSymAction
 
 one sig P0 extends ParamIdx {}
 
@@ -254,7 +281,7 @@ one sig T0, T1, T2, T3, T4, T5, T6, T7 extends Idx {}
 fact {
 	IdxOrder/first = T0
 	IdxOrder/next = T0->T1 + T1->T2 + T2->T3 + T3->T4 + T4->T5 + T5->T6 + T6->T7
-	no (Fluent.initFl + Fluent.termFl) & (SndPrepare + RcvAbort + RcvCommit)
+	no (Fluent.initFl + Fluent.termFl).baseName & (SndPrepare + RcvAbort + RcvCommit)
 }
 
 

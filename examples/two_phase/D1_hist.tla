@@ -3,64 +3,49 @@ EXTENDS Naturals, Sequences, Integers
 
 CONSTANTS RMs
 
-VARIABLES msgs, onceRcvAbort, onceRcvPrepare, onceRcvCommit, onceSndCommit, onceSndAbort, onceSndPrepare
+VARIABLES msgs
 
-vars == <<msgs, onceRcvAbort, onceRcvPrepare, onceRcvCommit, onceSndCommit, onceSndAbort, onceSndPrepare>>
+vars == <<msgs>>
 
 CandSep ==
-/\ \A var0 \in RMs : (onceSndCommit[var0]) => (onceRcvPrepare[var0])
-/\ (\E var0 \in RMs : onceSndCommit[var0]) => (\A var0 \in RMs : onceRcvPrepare[var0])
-/\ \A var0 \in RMs : (onceSndAbort[var0]) => (~(onceSndCommit[var0]))
-/\ (\E var0 \in RMs : onceSndCommit[var0]) => (~(\E var0 \in RMs : onceSndAbort[var0]))
+TRUE
 
 Message == ([type : {"Prepared"},theRM : RMs] \cup [type : {"Commit","Abort"}])
 
 Init ==
 /\ msgs = {}
-/\ onceRcvAbort = [ x0 \in RMs |-> FALSE]
-/\ onceRcvPrepare = [ x0 \in RMs |-> FALSE]
-/\ onceRcvCommit = [ x0 \in RMs |-> FALSE]
-/\ onceSndCommit = [ x0 \in RMs |-> FALSE]
-/\ onceSndAbort = [ x0 \in RMs |-> FALSE]
-/\ onceSndPrepare = [ x0 \in RMs |-> FALSE]
 
 SndPrepare(rm) ==
 /\ msgs' = (msgs \cup {[type |-> "Prepared",theRM |-> rm]})
-/\ onceSndPrepare' = [onceSndPrepare EXCEPT![rm] = TRUE]
-/\ UNCHANGED<<onceRcvAbort, onceRcvPrepare, onceRcvCommit, onceSndCommit, onceSndAbort>>
+/\ UNCHANGED<<>>
 /\ CandSep'
 
 RcvPrepare(rm) ==
 /\ ([type |-> "Prepared",theRM |-> rm] \in msgs)
 /\ UNCHANGED <<msgs>>
-/\ onceRcvPrepare' = [onceRcvPrepare EXCEPT![rm] = TRUE]
-/\ UNCHANGED<<onceRcvAbort, onceRcvCommit, onceSndCommit, onceSndAbort, onceSndPrepare>>
+/\ UNCHANGED<<>>
 /\ CandSep'
 
 SndCommit(rm) ==
 /\ msgs' = (msgs \cup {[type |-> "Commit"]})
-/\ onceSndCommit' = [onceSndCommit EXCEPT![rm] = TRUE]
-/\ UNCHANGED<<onceRcvAbort, onceRcvPrepare, onceRcvCommit, onceSndAbort, onceSndPrepare>>
+/\ UNCHANGED<<>>
 /\ CandSep'
 
 RcvCommit(rm) ==
 /\ ([type |-> "Commit"] \in msgs)
 /\ UNCHANGED <<msgs>>
-/\ onceRcvCommit' = [onceRcvCommit EXCEPT![rm] = TRUE]
-/\ UNCHANGED<<onceRcvAbort, onceRcvPrepare, onceSndCommit, onceSndAbort, onceSndPrepare>>
+/\ UNCHANGED<<>>
 /\ CandSep'
 
 SndAbort(rm) ==
 /\ msgs' = (msgs \cup {[type |-> "Abort"]})
-/\ onceSndAbort' = [onceSndAbort EXCEPT![rm] = TRUE]
-/\ UNCHANGED<<onceRcvAbort, onceRcvPrepare, onceRcvCommit, onceSndCommit, onceSndPrepare>>
+/\ UNCHANGED<<>>
 /\ CandSep'
 
 RcvAbort(rm) ==
 /\ ([type |-> "Abort"] \in msgs)
 /\ UNCHANGED <<msgs>>
-/\ onceRcvAbort' = [onceRcvAbort EXCEPT![rm] = TRUE]
-/\ UNCHANGED<<onceRcvPrepare, onceRcvCommit, onceSndCommit, onceSndAbort, onceSndPrepare>>
+/\ UNCHANGED<<>>
 /\ CandSep'
 
 Next ==

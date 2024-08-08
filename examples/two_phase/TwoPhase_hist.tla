@@ -3,12 +3,12 @@ EXTENDS Naturals, Sequences, Integers
 
 CONSTANTS RMs
 
-VARIABLES msgs, tmState, onceSilentAbort, onceRcvAbort, tmPrepared, rmState, onceRcvPrepare, onceRcvCommit, onceSndCommit, onceSndAbort, onceSndPrepare
+VARIABLES msgs, tmState, tmPrepared, Fluent5, Fluent4, rmState
 
-vars == <<msgs, tmState, onceSilentAbort, onceRcvAbort, tmPrepared, rmState, onceRcvPrepare, onceRcvCommit, onceSndCommit, onceSndAbort, onceSndPrepare>>
+vars == <<msgs, tmState, tmPrepared, Fluent5, Fluent4, rmState>>
 
 CandSep ==
-(\E var0 \in RMs : onceSndCommit[var0]) => (~(\E var0 \in RMs : onceSndAbort[var0]))
+\A var0 \in RMs : (\E var1 \in RMs : Fluent5[var1]) => (Fluent4[var0])
 
 Message == ([type : {"Prepared"},theRM : RMs] \cup [type : {"Commit","Abort"}])
 
@@ -17,29 +17,23 @@ Init ==
 /\ rmState = [rm \in RMs |-> "working"]
 /\ tmState = "init"
 /\ tmPrepared = {}
-/\ onceSilentAbort = [ x0 \in RMs |-> FALSE]
-/\ onceRcvAbort = [ x0 \in RMs |-> FALSE]
-/\ onceRcvPrepare = [ x0 \in RMs |-> FALSE]
-/\ onceRcvCommit = [ x0 \in RMs |-> FALSE]
-/\ onceSndCommit = [ x0 \in RMs |-> FALSE]
-/\ onceSndAbort = [ x0 \in RMs |-> FALSE]
-/\ onceSndPrepare = [ x0 \in RMs |-> FALSE]
+/\ Fluent5 = [ x0 \in RMs |-> FALSE]
+/\ Fluent4 = [ x0 \in RMs |-> FALSE]
 
 SndPrepare(rm) ==
 /\ msgs' = (msgs \cup {[type |-> "Prepared",theRM |-> rm]})
 /\ rmState[rm] = "working"
 /\ rmState' = [rmState EXCEPT![rm] = "prepared"]
 /\ UNCHANGED <<tmState,tmPrepared>>
-/\ onceSndPrepare' = [onceSndPrepare EXCEPT![rm] = TRUE]
-/\ UNCHANGED<<onceSilentAbort, onceRcvAbort, onceRcvPrepare, onceRcvCommit, onceSndCommit, onceSndAbort>>
+/\ Fluent4' = [Fluent4 EXCEPT![rm] = TRUE]
+/\ UNCHANGED<<Fluent5>>
 
 RcvPrepare(rm) ==
 /\ ([type |-> "Prepared",theRM |-> rm] \in msgs)
 /\ tmState = "init"
 /\ tmPrepared' = (tmPrepared \cup {rm})
 /\ UNCHANGED <<msgs,tmState,rmState>>
-/\ onceRcvPrepare' = [onceRcvPrepare EXCEPT![rm] = TRUE]
-/\ UNCHANGED<<onceSilentAbort, onceRcvAbort, onceRcvCommit, onceSndCommit, onceSndAbort, onceSndPrepare>>
+/\ UNCHANGED<<Fluent5, Fluent4>>
 
 SndCommit(rm) ==
 /\ msgs' = (msgs \cup {[type |-> "Commit"]})
@@ -47,37 +41,36 @@ SndCommit(rm) ==
 /\ tmPrepared = RMs
 /\ tmState' = "committed"
 /\ UNCHANGED <<tmPrepared,rmState>>
-/\ onceSndCommit' = [onceSndCommit EXCEPT![rm] = TRUE]
-/\ UNCHANGED<<onceSilentAbort, onceRcvAbort, onceRcvPrepare, onceRcvCommit, onceSndAbort, onceSndPrepare>>
+/\ UNCHANGED<<Fluent5, Fluent4>>
 
 RcvCommit(rm) ==
 /\ ([type |-> "Commit"] \in msgs)
 /\ rmState' = [rmState EXCEPT![rm] = "committed"]
 /\ UNCHANGED <<msgs,tmState,tmPrepared>>
-/\ onceRcvCommit' = [onceRcvCommit EXCEPT![rm] = TRUE]
-/\ UNCHANGED<<onceSilentAbort, onceRcvAbort, onceRcvPrepare, onceSndCommit, onceSndAbort, onceSndPrepare>>
+/\ Fluent5' = [Fluent5 EXCEPT![rm] = TRUE]
+/\ Fluent4' = [Fluent4 EXCEPT![rm] = TRUE]
+/\ UNCHANGED<<>>
 
 SndAbort(rm) ==
 /\ msgs' = (msgs \cup {[type |-> "Abort"]})
 /\ (tmState \in {"init","aborted"})
 /\ tmState' = "aborted"
 /\ UNCHANGED <<tmPrepared,rmState>>
-/\ onceSndAbort' = [onceSndAbort EXCEPT![rm] = TRUE]
-/\ UNCHANGED<<onceSilentAbort, onceRcvAbort, onceRcvPrepare, onceRcvCommit, onceSndCommit, onceSndPrepare>>
+/\ UNCHANGED<<Fluent5, Fluent4>>
 
 RcvAbort(rm) ==
 /\ ([type |-> "Abort"] \in msgs)
 /\ rmState' = [rmState EXCEPT![rm] = "aborted"]
 /\ UNCHANGED <<msgs,tmState,tmPrepared>>
-/\ onceRcvAbort' = [onceRcvAbort EXCEPT![rm] = TRUE]
-/\ UNCHANGED<<onceSilentAbort, onceRcvPrepare, onceRcvCommit, onceSndCommit, onceSndAbort, onceSndPrepare>>
+/\ Fluent5' = [Fluent5 EXCEPT![rm] = FALSE]
+/\ Fluent4' = [Fluent4 EXCEPT![rm] = FALSE]
+/\ UNCHANGED<<>>
 
 SilentAbort(rm) ==
 /\ rmState[rm] = "working"
 /\ rmState' = [rmState EXCEPT![rm] = "aborted"]
 /\ UNCHANGED <<tmState,tmPrepared,msgs>>
-/\ onceSilentAbort' = [onceSilentAbort EXCEPT![rm] = TRUE]
-/\ UNCHANGED<<onceRcvAbort, onceRcvPrepare, onceRcvCommit, onceSndCommit, onceSndAbort, onceSndPrepare>>
+/\ UNCHANGED<<Fluent5, Fluent4>>
 
 Next ==
 \E rm \in RMs :

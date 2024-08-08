@@ -122,7 +122,7 @@ public class FormulaSeparation {
     	List<AlloyTrace> posTraces = new ArrayList<>();
     	posTraces.add(initPosTrace);
     	
-    	List<String> invariants = new ArrayList<>();
+    	List<Formula> invariants = new ArrayList<>();
     	boolean formulaSeparates = false;
     	
     	int round = 1;
@@ -131,17 +131,22 @@ public class FormulaSeparation {
     		
     		// generate a negative trace for this round; we will generate a formula (assumption) that eliminates
     		// the negative trace
-    		final String invariant = prettyConjuncts(invariants);
+    		final Formula invariant = Formula.conjunction(invariants);
         	final String tlaCompHV = writeHistVarsSpec(tlaComp, cfgComp, invariant, true);
         	final AlloyTrace negTrace = isCandSepInvariant(tlaCompHV, cfgNegTraces, "NT", "NegTrace");
     		formulaSeparates = !negTrace.hasError();
-    		Utils.printVerbose(verbose, "negTrace:\n" + negTrace);
+    		Utils.printVerbose(verbose, "negTrace:\n" + negTrace.fullSigString());
 
     		// use the negative trace and all existing positive traces to generate a formula
 			// keep generating positive traces until the formula turns into an invariant
     		boolean isInvariant = false;
     		while (!formulaSeparates && !isInvariant) {
-    			final String formula = synthesizeFormula(negTrace, posTraces);
+    			final Formula formula = synthesizeFormula(negTrace, posTraces, invariant.getNumFluents());
+    			
+    			// if the latest constraints are unsatisfiable then stop and report this to the user
+    			if (formula.isUNSAT()) {
+    				return Formula.conjunction(invariants).getFormula();
+    			}
     			
     			// generate positive traces until the formula becomes an invariant
     			final int ptNum = posTraces.size() + 1;
@@ -156,7 +161,7 @@ public class FormulaSeparation {
     				System.out.println("The formula is an invariant! Moving to the next round.");
     			}
     			else {
-    	    		Utils.printVerbose(verbose, "posTrace:\n" + posTrace);
+    	    		Utils.printVerbose(verbose, "posTrace:\n" + posTrace.fullSigString());
     				posTraces.add(posTrace);
     			}
     		}
@@ -164,7 +169,7 @@ public class FormulaSeparation {
 			System.out.println();
     	}
     	
-    	return prettyConjuncts(invariants);
+    	return Formula.conjunction(invariants).getFormula();
 	}
 	
 	private AlloyTrace isCandSepInvariant(final String tla, final String cfg, final String name, final String ext) {
@@ -206,7 +211,7 @@ public class FormulaSeparation {
 		return new AlloyTrace(name, ext, lastIdx, alloyLastIdx, pathParens);
 	}
 	
-	private String synthesizeFormula(final AlloyTrace negTrace, final List<AlloyTrace> posTraces) {
+	private Formula synthesizeFormula(final AlloyTrace negTrace, final List<AlloyTrace> posTraces, final int curNumFluents) {
 		// split inference into several jobs, where each job assigns possible types to variables
 		// note: the variable orderings matter because of the legal environments we chose (see legalEnvVarCombos)
 		// so we need to consider the order of vars, not just how many of each type
@@ -223,10 +228,10 @@ public class FormulaSeparation {
 		FormulaSynth formSynth = new FormulaSynth();
 		return formSynth.synthesizeFormula(envVarTypes, negTrace, posTraces,
 				tlcSys, tlcComp, internalActions, sortElementsMap, actionParamTypes, maxActParamLen,
-				qvars, legalEnvVarCombos);
+				qvars, legalEnvVarCombos, curNumFluents);
 	}
 	
-	private String writeHistVarsSpec(final String tla, final String cfg, final String candSep, boolean candSepInActions) {
+	private String writeHistVarsSpec(final String tla, final String cfg, final Formula candSep, boolean candSepInActions) {
     	final String tlaCompBaseName = tla.replaceAll("\\.tla", "");
     	final String specName = tlaCompBaseName + "_hist";
     	
@@ -243,21 +248,15 @@ public class FormulaSeparation {
 				.filter(d -> !d.getName().toString().equals("vars")) // remove the vars decl; we insert this manually
 				.collect(Collectors.toList());
 		
-		// create the history vars that represent "once(action)"
-		final Set<String> onceVars = tlc.actionsInSpec()
-				.stream()
-				.map(v -> "once" + v)
-				.collect(Collectors.toSet());
-		
 		List<String> strModuleNodes = moduleNodes
 				.stream()
 				.map(d -> {
 					final String dname = d.getName().toString();
 					if (tlc.actionsInSpec().contains(dname)) {
-						d.addOnceVars(onceVars,candSepInActions);
+						d.addFluentVars(candSep, candSepInActions);
 					}
 					else if (dname.equals("Init")) {
-						d.addOnceInitVars(onceVars, actionParamTypes);
+						d.addFluentInitVars(candSep); //, actionParamTypes);
 					}
 					return d;
 				 })
@@ -281,7 +280,7 @@ public class FormulaSeparation {
 		for (int i = 0; i < moduleNodes.size(); ++i) {
 			final OpDefNode defNode = moduleNodes.get(i);
 			if (candSepDependencyNodes.isEmpty()) {
-				strModuleNodes.add(i, "CandSep ==\n" + candSep);
+				strModuleNodes.add(i, "CandSep ==\n" + candSep.getFormula());
 				break;
 			}
 			else if (candSepDependencyNodes.contains(defNode)) {
@@ -308,7 +307,7 @@ public class FormulaSeparation {
 
         final String moduleList = String.join(", ", moduleNameList);
         final String constantsDecl = tlc.constantsInSpec().isEmpty() ? "" : "CONSTANTS " + String.join(", ", tlc.constantsInSpec());
-        final String varList = String.join(", ", Utils.union(tlc.stateVarsInSpec(), onceVars));
+        final String varList = String.join(", ", Utils.union(tlc.stateVarsInSpec(), candSep.getFluentVars()));
         final String modulesDecl = moduleList.isEmpty() ? "" : "EXTENDS " + moduleList;
         final String varsDecl = "VARIABLES " + varList;
         final String varsListDecl = "vars == <<" + varList + ">>";
@@ -376,14 +375,6 @@ public class FormulaSeparation {
 		}
 		
 		return cumEnvVarTypes;
-	}
-	
-	private static String prettyConjuncts(final List<String> conjuncts) {
-		if (conjuncts.isEmpty()) {
-			return "TRUE";
-		}
-		final String delim = "\n/\\ ";
-		return "/\\ " + String.join(delim, conjuncts);
 	}
 	
 	private static Map<String, Set<String>> createSortElementsMap(TLC tlc) {

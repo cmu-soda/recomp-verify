@@ -17,6 +17,10 @@ import tlc2.TLC;
 import tlc2.Utils;
 
 public class FormulaSynthWorker implements Runnable {
+	// TODO make these params
+	private static final int MAX_FORMULA_SIZE = 7;
+	private static final int MAX_NUM_FLUENT_ACTS = 5;
+	
 	private final FormulaSynth formulaSynth;
 	private final Map<String,String> envVarTypes;
 	private final int id;
@@ -30,6 +34,7 @@ public class FormulaSynthWorker implements Runnable {
 	private final int maxActParamLen;
 	private final Set<String> qvars;
 	private final Set<Set<String>> legalEnvVarCombos;
+	private final int curNumFluents;
 
 	// for some reason using a lock is much faster than using the synchronized keyword
 	private final Lock lock;
@@ -41,7 +46,8 @@ public class FormulaSynthWorker implements Runnable {
 			AlloyTrace negTrace, List<AlloyTrace> posTraces,
 			TLC tlcSys, TLC tlcComp, Set<String> internalActions,
 			Map<String, Set<String>> sortElementsMap, Map<String, List<String>> actionParamTypes,
-			int maxActParamLen, Set<String> qvars, Set<Set<String>> legalEnvVarCombos) {
+			int maxActParamLen, Set<String> qvars, Set<Set<String>> legalEnvVarCombos,
+			int curNumFluents) {
 		this.formulaSynth = formulaSynth;
 		this.envVarTypes = envVarTypes;
 		this.id = id;
@@ -55,6 +61,7 @@ public class FormulaSynthWorker implements Runnable {
 		this.maxActParamLen = maxActParamLen;
 		this.qvars = qvars;
 		this.legalEnvVarCombos = legalEnvVarCombos;
+		this.curNumFluents = curNumFluents;
 		
 		this.lock = new ReentrantLock();
 		this.process = null;
@@ -63,8 +70,9 @@ public class FormulaSynthWorker implements Runnable {
 	
 	@Override
 	public void run() {
+		// TODO change name from "formula" to "json"
 		final String formula = synthesizeFormulaWithVarTypes(this.negTrace, this.posTraces);
-		this.formulaSynth.setFormula(formula);
+		this.formulaSynth.setFormula(formula, this.id);
 	}
 	
 	public void kill() {
@@ -72,12 +80,18 @@ public class FormulaSynthWorker implements Runnable {
 		try {
 			this.globalTaskCompleted = true;
 			if (this.process != null && this.process.isAlive()) {
-				this.process.destroyForcibly();
+				// the alloy synthesis tool spawns child processes which may not be cleaned up by the parent
+				killProcessAndAllChildren(this.process.toHandle());
 			}
 		}
 		finally {
 			this.lock.unlock();
 		}
+	}
+	
+	private static void killProcessAndAllChildren(ProcessHandle proc) {
+		proc.children().forEach(p -> killProcessAndAllChildren(p));
+		proc.destroyForcibly();
 	}
 	
 	private Process createProcess(final String[] cmd) throws IOException {
@@ -96,12 +110,12 @@ public class FormulaSynthWorker implements Runnable {
 	}
 	
 	private String synthesizeFormulaWithVarTypes(final AlloyTrace negTrace, final List<AlloyTrace> posTraces) {
-		final String alloyFormulaInferFile = "formula_infer_" + id + ".als";
+		final String alloyFormulaInferFile = "formula_infer_" + this.id + ".als";
 		writeAlloyFormulaInferFile(alloyFormulaInferFile, negTrace, posTraces, this.envVarTypes);
 		
 		StringBuilder formulaBuilder = new StringBuilder();
 		try {
-			final String[] cmd = {"java", "-Djava.library.path=" + openWboLibPath, "-Xmx25G", "-jar", alloyFormlaInferJar, "-f", alloyFormulaInferFile, "--tla"};
+			final String[] cmd = {"java", "-Djava.library.path=" + openWboLibPath, "-Xmx25G", "-jar", alloyFormlaInferJar, "-f", alloyFormulaInferFile, "--tla", "--json"};
 			this.process = createProcess(cmd);
 			if (this.process == null) {
 				// in this case, the worker has been killed so we simply return
@@ -112,9 +126,13 @@ public class FormulaSynthWorker implements Runnable {
 			while ((line = reader.readLine()) != null) {
 				formulaBuilder.append(line);
 			}
+			
+			// to capture errors, we will need to put it into the json as an error field.
 		}
 		catch (Exception e) {
 			// workers are expected to be killed if another completes first, no reason to report the exception
+			// return UNSAT so the caller doesn't attempt to parse an incomplete / empty JSON formula
+			return "UNSAT";
 		}
 		
 		return formulaBuilder.toString();
@@ -122,9 +140,9 @@ public class FormulaSynthWorker implements Runnable {
 	
 	private void writeAlloyFormulaInferFile(final String fileName, final AlloyTrace negTrace, final List<AlloyTrace> posTraces,
 			final Map<String,String> envVarTypes) {
-		// TODO make the formula len a param
-		final int formulaSize = 7; // Math.min(posTraces.size() + 5, 7);
-		final String strFormulaSize = "for " + formulaSize + " Formula";
+		final int formulaSize = MAX_FORMULA_SIZE + 1; // +1 because of the formula root
+		final int numSymActs = MAX_NUM_FLUENT_ACTS;
+		final String strFormulaSize = "for " + formulaSize + " Formula, " + numSymActs + " FlSymAction";
 		
 		// add all atoms, i.e. the values in each constant
 		final Set<String> allAtoms = tlcSys.tool.getModelConfig().getConstantsAsList()
@@ -160,6 +178,17 @@ public class FormulaSynthWorker implements Runnable {
 				.collect(Collectors.joining(", "));
 		final String paramIndicesDecl = "one sig " + strParamIndices + " extends ParamIdx {}";
 		
+		// the params for each fluent must be ordered, i.e. P0, or P0 + P1, or P0 + P1 + P2, etc.
+		final String fluentParamOpts = IntStream.range(0, maxActParamLen)
+				.mapToObj(i -> {
+					final String opts = IntStream.rangeClosed(0, i)
+							.mapToObj(j -> "P"+j)
+							.collect(Collectors.joining("+"));
+					return "(f.vars.Var = " + opts + ")";
+				})
+				.collect(Collectors.joining(" or "));
+		final String fluentParamOptsConstraint = "all f : Fluent | " + fluentParamOpts;
+		
 		// add constraints for param indices
 		final String strNextMulti = IntStream.range(0, maxActParamLen-1)
 				.mapToObj(i -> "P"+i + "->P"+(i+1))
@@ -168,6 +197,7 @@ public class FormulaSynthWorker implements Runnable {
 		final String paramIndicesConstraints = "fact {\n"
 				+ "	ParamIdxOrder/first = P0\n"
 				+ "	ParamIdxOrder/next = " + strNextDef + "\n"
+				+ "	" + fluentParamOptsConstraint + "\n"
 				+ "}\n"
 				+ "";
 		
@@ -176,9 +206,20 @@ public class FormulaSynthWorker implements Runnable {
 		StringBuilder concActsBuilder = new StringBuilder();
 		for (final String act : this.tlcComp.actionsInSpec()) {
 			final List<String> paramTypes = this.actionParamTypes.get(act);
-			final String maxParam = paramTypes.isEmpty() ? "no maxParam" : "maxParam = P" + (paramTypes.size()-1);
+			final String paramIdxsDef = IntStream.range(0, paramTypes.size())
+					.mapToObj(i -> "P" + i)
+					.collect(Collectors.joining(" + "));
+			final String paramIdxs = paramTypes.isEmpty() ? "no paramIdxs" : "paramIdxs = " + paramIdxsDef;
+			final String paramTypesStr = IntStream.range(0, paramTypes.size())
+					.mapToObj(i -> {
+						final String idx = "P" + i;
+						final String type = paramTypes.get(i);
+						return idx + "->" + type;
+					})
+					.collect(Collectors.joining(" + "));
 			final String strBaseDecl = "one sig " + act + " extends BaseName {} {\n"
-					+ "	" + maxParam + "\n"
+					+ "	" + paramIdxs + "\n"
+					+ "	paramTypes = " + paramTypesStr + "\n"
 					+ "}";
 			
 			Set<List<String>> concreteActionParams = new HashSet<>();
@@ -228,7 +269,7 @@ public class FormulaSynthWorker implements Runnable {
 				.collect(Collectors.joining(" + "));
 		final String strInternalActs = this.internalActions
 				.stream()
-				.map(act -> "	no OnceVar.baseName & " + act)
+				.map(act -> "	no (Fluent.initFl + Fluent.termFl).baseName & " + act)
 				.collect(Collectors.joining("\n"));
 		final String strIndicesFacts = "fact {\n"
 				+ "	IdxOrder/first = T0\n"
@@ -249,6 +290,21 @@ public class FormulaSynthWorker implements Runnable {
 				+ envVarForallFacts + "\n"
 				+ envVarExistsFacts + "\n"
 				+ "}";
+		
+		// meta function that encodes what type each var is. this is useful for the formula
+		// synthesizer to recover the type of each variable when creating the json output.
+		final String envVarTypesDef = this.envVarTypes.keySet()
+				.stream()
+				.map(v -> v + "->" + this.envVarTypes.get(v))
+				.collect(Collectors.joining(" + "));
+		final String envVarTypesFunc = "fun envVarTypes : set(Var->Sort) {\n"
+				+ "	" + envVarTypesDef + "\n"
+				+ "}";
+		
+		// meta comment that encodes the number of fluents that already exist. this is useful
+		// for the formula synthesizer to rename each new fluent so it has a name that hasn't
+		// already been chosen yet.
+		final String curNumFluentsComment = "//" + this.curNumFluents;
 		
 		// declare the quantifier variables
 		final String qvarDelc = "one sig " + String.join(", ", this.qvars) + " extends Var {} {}";
@@ -304,7 +360,8 @@ public class FormulaSynthWorker implements Runnable {
 				.map(t -> t.toString())
 				.collect(Collectors.toList());
 		
-		final String alloyFormulaInfer = baseAlloyFormulaInfer
+		final String alloyFormulaInfer = curNumFluentsComment + "\n"
+				+ baseAlloyFormulaInfer
 				+ strFormulaSize + "\n"
 				+ "\n" + paramIndicesDecl + "\n"
 				+ "\n" + paramIndicesConstraints + "\n\n"
@@ -314,6 +371,7 @@ public class FormulaSynthWorker implements Runnable {
 				+ "\n" + strIndicesDecl + "\n"
 				+ "\n" + strIndicesFacts + "\n\n"
 				//+ "\n" + envVarFacts + "\n\n" // overall, this makes things slower
+				+ "\n" + envVarTypesFunc + "\n\n"
 				+ "\n" + qvarDelc + "\n\n"
 				+ "\n" + strNonEmptyEnvsDecls + "\n\n"
 				+ "\n" + partialInstance + "\n\n"
@@ -379,7 +437,8 @@ public class FormulaSynthWorker implements Runnable {
 	private static final String alloyFormlaInferJar = "/Users/idardik/Documents/CMU/compositional_ii/alsm-formula-synthesis/bin/alsm-formula-synthesis.jar";
 	private static final String openWboLibPath = "/Users/idardik/Documents/CMU/compositional_ii/alsm-formula-synthesis/lib/";
 	
-	private static final String baseAlloyFormulaInfer = "open util/ordering[Idx] as IdxOrder\n"
+	private static final String baseAlloyFormulaInfer = "open util/boolean\n"
+			+ "open util/ordering[Idx] as IdxOrder\n"
 			+ "open util/ordering[ParamIdx] as ParamIdxOrder\n"
 			+ "\n"
 			+ "abstract sig Var {}\n"
@@ -394,7 +453,8 @@ public class FormulaSynthWorker implements Runnable {
 			+ "\n"
 			+ "// base name for an action\n"
 			+ "abstract sig BaseName {\n"
-			+ "	maxParam : ParamIdx\n"
+			+ "	paramIdxs : set ParamIdx,\n"
+			+ "	paramTypes : set(ParamIdx->Sort)\n"
 			+ "}\n"
 			+ "\n"
 			+ "// concrete action\n"
@@ -413,11 +473,11 @@ public class FormulaSynthWorker implements Runnable {
 			+ "	no children\n"
 			+ "}\n"
 			+ "\n"
-			+ "sig Not extends Formula {\n"
+			/*+ "sig Not extends Formula {\n"
 			+ "	child : Formula\n"
 			+ "} {\n"
 			+ "	children = child\n"
-			+ "}\n"
+			+ "}\n"*/
 			+ "\n"
 			+ "sig Implies extends Formula {\n"
 			+ "	left : Formula,\n"
@@ -426,11 +486,53 @@ public class FormulaSynthWorker implements Runnable {
 			+ "	children = left + right\n"
 			+ "}\n"
 			+ "\n"
-			+ "sig OnceVar extends Formula {\n"
-			+ "	baseName : BaseName,\n"
-			+ "	vars : ParamIdx->Var\n"
+			+ "sig FlSymAction {\n"
+			+ "    baseName : BaseName,\n"
+			+ "\n"
+			+ "    // actToFlParamsMap maps action-params to fluent-params\n"
+			+ "    // in other words, actToFlParamsMap decides which of the action-params will be\n"
+			+ "    // used for setting a boolean value of the state variable (representing the\n"
+			+ "    // fluent) in the _hist TLA+ code.\n"
+			+ "    actToFlParamsMap : set(ParamIdx->ParamIdx)\n"
 			+ "} {\n"
-			+ "	no children\n"
+			+ "    // actToFlParamsMap is an injective function\n"
+			+ "    all x1,x2,y1,y2 : ParamIdx |\n"
+			+ "        (x1->y1 in actToFlParamsMap and x2->y2 in actToFlParamsMap) implies (x1->y1 = x2->y2 or (not x1=x2 and not y1=y2))\n"
+			+ "\n"
+			+ "    // domain(actToFlParamsMap) \\subseteq paramIdxs(baseName)\n"
+			+ "    actToFlParamsMap.ParamIdx in baseName.paramIdxs\n"
+			+ "}\n"
+			+ "\n"
+			+ "sig Fluent extends Formula {\n"
+			+ "    initially : Bool,\n"
+			+ "    initFl : set FlSymAction,\n"
+			+ "    termFl : set FlSymAction,\n"
+			+ "\n"
+			+ "    // vars represents the parameters (including the ordering) to the fluent itself\n"
+			+ "	vars : set(ParamIdx->Var)\n"
+			+ "} {\n"
+			+ "    no children\n"
+			//+ "    no initFl & termFl\n"
+			+ "    no initFl.baseName & termFl.baseName // strong condition for ensuring initFl and termFl are mutex\n"
+			+ "    some initFl + termFl\n"
+			+ "    some vars\n"
+			+ "\n"
+			+ "    // vars is a function\n"
+			+ "    all p : ParamIdx, v1,v2 : Var | (p->v1 in vars and p->v2 in vars) implies (v1 = v2)\n"
+			+ "\n"
+			//+ "    // a base name can only occur once across all fluents\n"
+			//+ "    all s1,s2 : (initFl + termFl) | (s1.baseName = s2.baseName) implies (s1 = s2)\n"
+			+ "\n"
+			+ "    // each fluent must accept all the fluent params in vars\n"
+			+ "    all s : (initFl + termFl) | ParamIdx.(s.actToFlParamsMap) = vars.Var\n"
+			+ "\n"
+			+ "    // each action must input the same param-types to the fluent\n"
+			+ "    let flParamTypes = vars.envVarTypes |\n"
+			+ "        all a : (initFl+termFl) |\n"
+			+ "            // for each param in the action, its type must match the fluent\n"
+			+ "            all actIdx : a.actToFlParamsMap.ParamIdx |\n"
+			+ "                let flIdx = actIdx.(a.actToFlParamsMap) |\n"
+			+ "                    flIdx.flParamTypes = actIdx.(a.baseName.paramTypes)\n"
 			+ "}\n"
 			+ "\n"
 			+ "sig Forall extends Formula {\n"
@@ -457,9 +559,8 @@ public class FormulaSynthWorker implements Runnable {
 			+ "	all f : Formula | f in Root.*children // all formulas must be a sub-formula of the root\n"
 			+ "	no Root.^children & Root // root appears once\n"
 			+ "	all f : Formula | f not in f.^children // eliminates cycles in formula nodes\n"
-			+ "	ParamIdx.(OnceVar.vars) in (Forall.var + Exists.var) // approximately: no free variables\n"
-			+ "	all f : OnceVar | (f.vars).Var = rangeParamIdx[f.baseName.maxParam] // the number of params in each action-var must match the action\n"
-			+ "	all v1, v2 : Var, p : ParamIdx, f : OnceVar | (p->v1 in f.vars and p->v2 in f.vars) implies v1 = v2\n"
+			+ "\n"
+			+ "	ParamIdx.(Fluent.vars) in (Forall.var + Exists.var) // approximately: no free variables=\n"
 			+ "\n"
 			+ "	// do not quantify over a variable that's already in scope\n"
 			+ "	all f1, f2 : Forall | (f2 in f1.^children) implies not (f1.var = f2.var)\n"
@@ -486,12 +587,22 @@ public class FormulaSynthWorker implements Runnable {
 			+ "	// trace semantics, i.e. e |- t,i |= f, where e is an environment, t is a trace, i is an index, and f is a formula\n"
 			+ "	all e : Env, i : Idx, f : TT | e->i->f in satisfies\n"
 			+ "	all e : Env, i : Idx, f : FF | e->i->f not in satisfies\n"
-			+ "	all e : Env, i : Idx, f : Not | e->i->f in satisfies iff (e->i->f.child not in satisfies)\n"
+			//+ "	all e : Env, i : Idx, f : Not | e->i->f in satisfies iff (e->i->f.child not in satisfies)\n"
 			+ "	all e : Env, i : Idx, f : Implies | e->i->f in satisfies iff (e->i->f.left in satisfies implies e->i->f.right in satisfies)\n"
 			//+ "	all e : Env, i : Idx, f : And | e->i->f in satisfies iff (e->i->f.left in satisfies and e->i->f.right in satisfies)\n"
 			//+ "	all e : Env, i : Idx, f : Or | e->i->f in satisfies iff (e->i->f.left in satisfies or e->i->f.right in satisfies)\n"
-			+ "	all e : Env, i : Idx, f : OnceVar | e->i->f in satisfies iff\n"
-			+ "		((some a : Act | concreteAct[a,e,f] and i->a in path) or (some i' : Idx | i'->i in next and e->i'->f in satisfies))\n"
+			+ "\n"
+			+ "    // e |- t,i |= f (where f is a fluent) iff any (the disjunction) of the following three hold:\n"
+			+ "    // 1. i = 0 and f.initally = True and t[i] \\notin f.termFl\n"
+			+ "    // 2. t[i] \\in f.initFl\n"
+			+ "    // 3. t[i] \\notin f.termFl and (e |- t,i-1 |= f)\n"
+			+ "	all e : Env, i : Idx, f : Fluent | e->i->f in satisfies iff\n"
+			+ "        // a is the action at the current index i in the trace\n"
+			+ "        let a = i.path |\n"
+			+ "            ((i = IdxOrder/first and f.initially = True and not isTermAct[a,e,f]) or\n"
+			+ "             (isInitAct[a,e,f]) or\n"
+			+ "             (not isTermAct[a,e,f] and some i' : Idx | i'->i in IdxOrder/next and e->i'->f in satisfies))\n"
+			+ "\n"
 			+ "	all e : Env, i : Idx, f : Forall | e->i->f in satisfies iff\n"
 			+ "		(all x : f.sort.atoms | some e' : Env | pushEnv[e',e,f.var,x] and e'->i->f.matrix in satisfies)\n"
 			+ "	all e : Env, i : Idx, f : Exists | e->i->f in satisfies iff\n"
@@ -499,8 +610,16 @@ public class FormulaSynthWorker implements Runnable {
 			+ "	all e : Env, i : Idx, f : Root | e->i->f in satisfies iff e->i->f.children in satisfies\n"
 			+ "}\n"
 			+ "\n"
-			+ "pred concreteAct[a : Act, e : Env, f : OnceVar] {\n"
-			+ "	f.baseName = a.baseName and (~(f.vars)).(a.params) = e.maps\n"
+			+ "// does this action initiate the fluent?\n"
+			+ "pred isInitAct[a : Act, e : Env, f : Fluent] {\n"
+			+ "    some s : f.initFl |\n"
+			+ "        a.baseName = s.baseName and (~(f.vars)).(~(s.actToFlParamsMap)).(a.params) in e.maps\n"
+			+ "}\n"
+			+ "\n"
+			+ "// does this action terminate the fluent?\n"
+			+ "pred isTermAct[a : Act, e : Env, f : Fluent] {\n"
+			+ "    some s : f.termFl |\n"
+			+ "        a.baseName = s.baseName and (~(f.vars)).(~(s.actToFlParamsMap)).(a.params) in e.maps\n"
 			+ "}\n"
 			+ "\n"
 			+ "pred pushEnv[env', env : Env, v : Var, x : Atom] {\n"

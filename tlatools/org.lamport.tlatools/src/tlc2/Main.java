@@ -31,7 +31,12 @@ public class Main {
     		
     		final String formula = new FormulaSeparation(tlaSys, cfgSys, tlaComp, cfgComp, propFile, otherComponents).synthesizeSepInvariant();
     		
-    		System.out.println("The following formula is a separating assumption:");
+    		if (!formula.contains("UNSAT")) {
+        		System.out.println("The following formula is a separating assumption:");
+    		}
+    		else {
+        		System.out.println("Could not synthesize a spearating assumption. Here are the intermediate conjuncts:");
+    		}
     		System.out.println(formula);
     	}
     	else {

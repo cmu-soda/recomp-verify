@@ -13,7 +13,10 @@ import java.util.concurrent.locks.ReentrantLock;
 import tlc2.TLC;
 
 public class FormulaSynth {
-	private String globalFormula = "UNSAT";
+	private static final int MAX_NUM_THREADS = 25;
+	
+	private String globalFormula = "{\"formula\":\"UNSAT\"}";
+	private int winningWorkerId = -1;
 	private final Lock lock = new ReentrantLock();
 	private final Condition aWorkerIsDone = lock.newCondition();
 	
@@ -24,20 +27,18 @@ public class FormulaSynth {
 	 * Manually synchronized
 	 * @param formula
 	 */
-	public void setFormula(final String formula) {
+	public void setFormula(final String formula, int workerId) {
 		lock.lock();
 		try {
-			if (this.globalFormula.contains("UNSAT") && !formula.contains("UNSAT")) {
+			if (this.globalFormula.contains("UNSAT") && !formula.contains("UNSAT") && !formula.trim().isEmpty()) {
 				this.globalFormula = formula;
-				this.aWorkerIsDone.signalAll();
+				this.winningWorkerId = workerId;
 			}
+			// no matter what, notify the master that this thread is done
+			this.aWorkerIsDone.signalAll();
 		}
 		finally {
 			lock.unlock();
-			
-			// we clean up the workers in a this method so the workers get cleaned up in a separate thread
-			// (the thread of the worker who finishes first)
-			this.cleanUpWorkers();
 		}
 	}
 
@@ -45,23 +46,23 @@ public class FormulaSynth {
 	 * This methods is intended to be called exactly once.
 	 * @return
 	 */
-	public String synthesizeFormula(Set<Map<String,String>> envVarTypes,
+	public Formula synthesizeFormula(Set<Map<String,String>> envVarTypes,
 			AlloyTrace negTrace, List<AlloyTrace> posTraces,
 			TLC tlcSys, TLC tlcComp, Set<String> internalActions,
 			Map<String, Set<String>> sortElementsMap, Map<String, List<String>> actionParamTypes,
-			int maxActParamLen, Set<String> qvars, Set<Set<String>> legalEnvVarCombos) {
+			int maxActParamLen, Set<String> qvars, Set<Set<String>> legalEnvVarCombos,
+			int curNumFluents) {
 		
 		this.workers = new HashSet<>();
 		int id = 0;
 		for (final Map<String,String> m : envVarTypes) {
 			final FormulaSynthWorker worker = new FormulaSynthWorker(this, m, id++, negTrace, posTraces,
 					tlcSys, tlcComp, internalActions, sortElementsMap, actionParamTypes, maxActParamLen,
-					qvars, legalEnvVarCombos);
+					qvars, legalEnvVarCombos, curNumFluents);
 			this.workers.add(worker);
 		}
 		
-		final int maxNumThreads = 25;
-		this.threadPool = Executors.newFixedThreadPool(maxNumThreads);
+		this.threadPool = Executors.newFixedThreadPool(MAX_NUM_THREADS);
 		for (FormulaSynthWorker worker : workers) {
 			this.threadPool.submit(worker);
 		}
@@ -72,22 +73,22 @@ public class FormulaSynth {
 				lock.lock();
 				try {
 					aWorkerIsDone.await();
-				} catch (InterruptedException e) {
-					// we expect to be interrupted, so do nothing
 				}
+				catch (InterruptedException e) {}
 				++numWorkersDone;
-				final String formula = this.globalFormula;
-				if (!formula.contains("UNSAT")) {
+				final Formula formula = new Formula(this.globalFormula, this.winningWorkerId);
+				if (!formula.isUNSAT()) {
 					return formula;
 				}
 			}
 		}
 		finally {
 			lock.unlock();
+			this.cleanUpWorkers();
 		}
 
 		// if we reach this point it means that we could not synthesize a formula
-		return "UNSAT";
+		return Formula.UNSAT();
 	}
 	
 	private void cleanUpWorkers() {

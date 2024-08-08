@@ -31,6 +31,7 @@
 package tla2sany.semantic;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.Hashtable;
@@ -43,6 +44,8 @@ import java.util.stream.Collectors;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
+import recomp.Fluent;
+import recomp.Formula;
 import tla2sany.explorer.ExploreNode;
 import tla2sany.explorer.ExplorerVisitor;
 import tla2sany.parser.SyntaxTreeNode;
@@ -630,26 +633,56 @@ public class OpDefNode extends OpDefOrDeclNode
 	  }
   }
   
-  public void addOnceVars(final Set<String> onceVars, boolean candSep) {
-	  final String name = this.getName().toString();
-	  final String onceName = "once" + name;
+  public void addFluentVars(final Formula formula, boolean addCandSep) {
+	  // the name of the action this node represents
+	  final String act = this.getName().toString();
 	  
-	  // create an "update once" expression
-	  String updateOnce = "";
-	  final boolean hasParams = this.params != null && this.params.length > 0;
-	  if (hasParams) {
-		  final String strParams = Utils.toArrayList(this.params)
-				  .stream()
-				  .map(p -> p.getName().toString())
-				  .collect(Collectors.joining("]["));
-		  updateOnce = onceName + "' = [" + onceName + " EXCEPT![" + strParams + "] = TRUE]";
-	  }
-	  else {
-		  updateOnce = onceName + "' = TRUE";
-	  }
+	  // the fluents that are updated in this action
+	  final List<String> fluentsUpdated = formula.getFluents()
+			  .stream()
+			  .filter(fluent -> fluent.init.contains(act) || fluent.term.contains(act))
+			  .map(fluent -> fluent.name)
+			  .collect(Collectors.toList());
+	  
+	  // the TLA+ conjuncts that update each fluent
+	  final List<String> fluentUpdateConjuncts = formula.getFluents()
+			  .stream()
+			  .filter(fluent -> fluent.init.contains(act) || fluent.term.contains(act))
+			  .map(fluent -> {
+				  // for each fluent, add the init / term variables to the conjuncts of this action
+				  final String updateVal = fluent.init.contains(act) ? "TRUE" : "FALSE";
+				  
+				  // get the parameters to this action
+				  final List<String> actParams = Utils.toArrayList(this.params)
+						  .stream()
+						  .map(p -> p.getName().toString())
+						  .collect(Collectors.toList());
+				  // feed the action-params to the fluent (in the correct order)
+				  // for example, if fluentActOrdering is: [3,0,1]
+				  // and if the params to the action are: (var0,var1,var2,var3)
+				  // then we access the fluent as: fluentName[var3,var0,var1]
+				  final List<Integer> fluentActOrdering = fluent.symActParamMaps.get(act);
+				  final List<String> fluentActs = fluentActOrdering
+						  .stream()
+						  .map(i -> actParams.get(i))
+						  .collect(Collectors.toList());
+				  final String fluentActsStr = String.join("][", fluentActs);
+				  final String fluentConj = fluent.name + "' = [" + fluent.name + " EXCEPT![" + fluentActsStr + "] = " + updateVal + "]";
+				  return fluentConj;
+			  })
+			  .collect(Collectors.toList());
+	  
+	  // the new frame condition for this action
+	  final String unchangedList = formula.getFluents()
+			  .stream()
+			  .map(f -> f.name)
+			  .filter(f -> !fluentsUpdated.contains(f))
+			  .collect(Collectors.joining(", "));
+	  final String unchanged = "UNCHANGED<<" + unchangedList + ">>";
 	  
 	  // create a list of conjuncts (operands)
-	  final int numNewOps = candSep ? 3 : 2;
+	  final int rawNumNewOps = fluentUpdateConjuncts.size() + 1; // +1 for the UNCHANGED list
+	  final int numNewOps = rawNumNewOps + (addCandSep ? 1 : 0);
 	  int idx = 0;
 	  ExprOrOpArgNode[] ops = new ExprOrOpArgNode[1 + numNewOps];
 	  ops[idx++] = this.getBody();
@@ -666,27 +699,24 @@ public class OpDefNode extends OpDefOrDeclNode
 		  }
 	  }
 	  
-	  // once frame condition
-	  final String onceUnchanged = onceVars
-			  .stream()
-			  .filter(v -> !v.equals(onceName))
-			  .collect(Collectors.joining(", "));
-	  final String onceFrame = "UNCHANGED<<" + onceUnchanged + ">>";
-	  
 	  // add new conjuncts
-	  ops[idx + 0] = new RawTlaNode(updateOnce, this.stn);
-	  ops[idx + 1] = new RawTlaNode(onceFrame, this.stn);
-	  if (candSep) {
-		  ops[idx + 2] = new RawTlaNode("CandSep'", this.stn);
+	  for (final String conj : fluentUpdateConjuncts) {
+		  ops[idx++] = new RawTlaNode(conj, this.stn);
+	  }
+	  ops[idx++] = new RawTlaNode(unchanged, this.stn);
+	  if (addCandSep) {
+		  ops[idx++] = new RawTlaNode("CandSep'", this.stn);
 	  }
 	  
 	  // change the child to be the new conjunct
 	  this.body = new OpApplNode(UniqueString.of("$ConjList"), ops, this.stn, null);
   }
   
-  public void addOnceInitVars(final Set<String> onceVars, final Map<String, List<String>> actionParamTypes) {
+  public void addFluentInitVars(final Formula formula) {
+	  final Collection<Fluent> fluents = formula.getFluents();
+	  
 	  // create a list of conjuncts (operands)
-	  final int numNewOps = onceVars.size();
+	  final int numNewOps = fluents.size();
 	  int idx = 0;
 	  ExprOrOpArgNode[] ops = new ExprOrOpArgNode[1 + numNewOps];
 	  ops[idx++] = this.getBody();
@@ -704,17 +734,17 @@ public class OpDefNode extends OpDefOrDeclNode
 	  }
 	  
 	  // add new conjuncts (one for each "once" var)
-	  for (final String onceVar : onceVars) {
-		  final String action = onceVar.replaceFirst("once", "");
-		  final List<String> paramTypes = actionParamTypes.get(action);
+	  for (final Fluent fluent : fluents) {
 		  StringBuilder initBuilder = new StringBuilder();
-		  initBuilder.append(onceVar).append(" = ");
+		  initBuilder.append(fluent.name).append(" = ");
+		  
+		  final List<String> paramTypes = fluent.paramTypes;
 		  for (int i = 0; i < paramTypes.size(); ++i) {
 			  final String paramType = paramTypes.get(i);
 			  final String qvName = "x" + i;
 			  initBuilder.append("[ ").append(qvName).append(" \\in ").append(paramType).append(" |-> ");
 		  }
-		  initBuilder.append("FALSE");
+		  initBuilder.append(fluent.initially);
 		  for (int i = 0; i < paramTypes.size(); ++i) {
 			  initBuilder.append("]");
 		  }
