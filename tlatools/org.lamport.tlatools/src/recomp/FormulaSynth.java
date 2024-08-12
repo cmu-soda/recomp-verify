@@ -15,22 +15,28 @@ import tlc2.TLC;
 public class FormulaSynth {
 	private static final int MAX_NUM_THREADS = 25;
 	
-	private String globalFormula = "{\"formula\":\"UNSAT\"}";
-	private int winningWorkerId = -1;
-	private double winningTimeElapsedInSeconds = 0.0;
+	private String globalFormula;
+	private int winningWorkerId;
+	private double winningTimeElapsedInSeconds;
+	private int numWorkersDone;
+	private Set<FormulaSynthWorker> workers;
+	private ExecutorService threadPool;
+
 	private final Lock lock = new ReentrantLock();
 	private final Condition aWorkerIsDone = lock.newCondition();
 	
-	private Set<FormulaSynthWorker> workers;
-	private ExecutorService threadPool;
+	public FormulaSynth() {
+		resetMemberVars();
+	}
 	
 	/**
 	 * Manually synchronized
 	 * @param formula
 	 */
 	public void setFormula(final String formula, int workerId, double timeElapsedInSeconds) {
-		lock.lock();
 		try {
+			this.lock.lock();
+			++this.numWorkersDone;
 			if (this.globalFormula.contains("UNSAT") && !formula.contains("UNSAT") && !formula.trim().isEmpty()) {
 				this.globalFormula = formula;
 				this.winningWorkerId = workerId;
@@ -45,7 +51,8 @@ public class FormulaSynth {
 	}
 
 	/**
-	 * This method is intended to be called exactly once.
+	 * Synthesize a formula using MAX_NUM_THREADS. The first formula to return a satisfying
+	 * formula "wins".
 	 * @return
 	 */
 	public Formula synthesizeFormula(Set<Map<String,String>> envVarTypes,
@@ -55,8 +62,8 @@ public class FormulaSynth {
 			int maxActParamLen, Set<String> qvars, Set<Set<String>> legalEnvVarCombos,
 			int curNumFluents) {
 		
+		resetMemberVars();
 		PerfTimer timer = new PerfTimer();
-		this.workers = new HashSet<>();
 		int id = 0;
 		for (final Map<String,String> m : envVarTypes) {
 			final FormulaSynthWorker worker = new FormulaSynthWorker(this, m, id++, negTrace, posTraces,
@@ -64,21 +71,20 @@ public class FormulaSynth {
 					qvars, legalEnvVarCombos, curNumFluents);
 			this.workers.add(worker);
 		}
-		
-		this.threadPool = Executors.newFixedThreadPool(MAX_NUM_THREADS);
-		for (FormulaSynthWorker worker : workers) {
-			this.threadPool.submit(worker);
-		}
-		
+
 		try {
-			int numWorkersDone = 0;
-			while (numWorkersDone < workers.size()) {
-				lock.lock();
+			this.lock.lock();
+			
+			this.threadPool = Executors.newFixedThreadPool(MAX_NUM_THREADS);
+			for (FormulaSynthWorker worker : workers) {
+				this.threadPool.submit(worker);
+			}
+			
+			while (this.numWorkersDone < workers.size()) {
 				try {
-					aWorkerIsDone.await();
+					this.aWorkerIsDone.await();
 				}
 				catch (InterruptedException e) {}
-				++numWorkersDone;
 				final Formula formula = new Formula(this.globalFormula, this.winningWorkerId);
 				if (!formula.isUNSAT()) {
 					System.out.println("Formula synthesis info:\n"
@@ -90,7 +96,7 @@ public class FormulaSynth {
 			}
 		}
 		finally {
-			lock.unlock();
+			this.lock.unlock();
 			this.cleanUpWorkers();
 		}
 
@@ -103,5 +109,13 @@ public class FormulaSynth {
 		for (FormulaSynthWorker worker : this.workers) {
 			worker.kill();
 		}
+	}
+	
+	private void resetMemberVars() {
+		this.globalFormula = "{\"formula\":\"UNSAT\"}";
+		this.winningWorkerId = -1;
+		this.winningTimeElapsedInSeconds = 0.0;
+		this.numWorkersDone = 0;
+		this.workers = new HashSet<>();
 	}
 }
