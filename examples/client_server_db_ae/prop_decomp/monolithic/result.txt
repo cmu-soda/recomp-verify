@@ -1,0 +1,21 @@
+$ time python3 endive.py --spec benchmarks/client_server_db_ae --seed 23 --ninvs 15000 --niters 3 --nrounds 4 --num_simulate_traces 50000 --simulate_depth 6 --tlc_workers 6
+
+Total duration: 13976.22 secs.
+python3 endive.py --spec benchmarks/client_server_db_ae --seed 23 --ninvs   3  80283.27s user 113.65s system 575% cpu 3:52:56.30 total
+
+Inv273_1_0_def == \A VARI \in Node : \A VARID \in DbRequestId : \A VARR \in Request : \A VARJ \in Node : \A VARP \in Response : (ResponseMatched(VARI,VARP)) \/ (~(<<VARI,VARP>> \in response_sent))
+Inv209_1_1_def == \A VARI \in Node : \A VARID \in DbRequestId : \A VARR \in Request : \A VARJ \in Node : \A VARP \in Response : (<<VARJ,VARP>> \in response_sent) \/ (~(<<VARJ,VARP>> \in response_received))
+Inv380_1_0_def == \A VARI \in Node : \A VARID \in DbRequestId : \A VARR \in Request : \A VARJ \in Node : \A VARP \in Response : ~(<<VARID,VARP>> \in db_response_sent) \/ (~(NoneWithId(VARID)))
+Inv388_1_1_def == \A VARI \in Node : \A VARID \in DbRequestId : \A VARR \in Request : \A VARJ \in Node : \A VARP \in Response : ~(<<VARID,VARR>> \in db_request_sent) \/ (~(NoneWithId(VARID)))
+Inv2881_2_2_def == \A VARI \in Node : \A VARID \in DbRequestId : \A VARR \in Request : \A VARJ \in Node : \A VARP \in Response : (ResponseMatched(VARI,VARP)) \/ (~(<<VARID,VARI>> \in t)) \/ (~(<<VARID,VARP>> \in db_response_sent))
+Inv2479_2_3_def == \A VARI \in Node : \A VARID \in DbRequestId : \A VARR \in Request : \A VARJ \in Node : \A VARP \in Response : (<<VARJ,VARR>> \in request_sent) \/ (~(<<VARID,VARJ>> \in t) \/ (~(<<VARID,VARR>> \in db_request_sent)))
+
+\* The inductive invariant candidate.
+IndAuto ==
+  /\ Safety
+  /\ Inv273_1_0_def
+  /\ Inv209_1_1_def
+  /\ Inv380_1_0_def
+  /\ Inv388_1_1_def
+  /\ Inv2881_2_2_def
+  /\ Inv2479_2_3_def

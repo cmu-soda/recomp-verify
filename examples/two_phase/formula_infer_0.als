@@ -289,17 +289,17 @@ one sig var1torm2var0torm2 extends Env {} {}
 
 
 fact PartialInstance {
-	lastIdx = (EmptyTrace->T0) + (PT5->T1) + (PT1->T1) + (PT2->T2) + (PT6->T2) + (PT7->T1) + (PT3->T3) + (PT8->T2) + (PT4->T1) + (NT->T3)
+	lastIdx = (EmptyTrace->T0) + (PT1->T1) + (PT4->T1) + (PT8->T2) + (PT7->T1) + (PT5->T1) + (PT3->T3) + (PT2->T2) + (NT->T3) + (PT6->T2)
 
-	path = (PT5 -> (T0->SndPreparerm1 + T1->RcvAbortrm2)) +
-		(PT1 -> (T0->RcvAbortrm1 + T1->SilentAbortrm2)) +
-		(PT2 -> (T0->SndPreparerm1 + T1->SndPreparerm2 + T2->RcvCommitrm2)) +
-		(PT6 -> (T0->SndPreparerm1 + T1->RcvAbortrm1 + T2->SndPreparerm2)) +
-		(PT7 -> (T0->RcvAbortrm1 + T1->RcvAbortrm2)) +
-		(PT3 -> (T0->SndPreparerm1 + T1->SndPreparerm2 + T2->RcvCommitrm1 + T3->RcvCommitrm2)) +
-		(PT8 -> (T0->SndPreparerm1 + T1->RcvAbortrm1 + T2->RcvAbortrm2)) +
+	path = (PT1 -> (T0->RcvAbortrm1 + T1->SilentAbortrm2)) +
 		(PT4 -> (T0->SndPreparerm1 + T1->RcvAbortrm1)) +
-		(NT -> (T0->SndPreparerm1 + T1->SndPreparerm2 + T2->RcvAbortrm1 + T3->RcvCommitrm2))
+		(PT8 -> (T0->SndPreparerm1 + T1->RcvAbortrm1 + T2->RcvAbortrm2)) +
+		(PT7 -> (T0->RcvAbortrm1 + T1->RcvAbortrm2)) +
+		(PT5 -> (T0->SndPreparerm1 + T1->RcvAbortrm2)) +
+		(PT3 -> (T0->SndPreparerm1 + T1->SndPreparerm2 + T2->RcvCommitrm1 + T3->RcvCommitrm2)) +
+		(PT2 -> (T0->SndPreparerm1 + T1->SndPreparerm2 + T2->RcvCommitrm2)) +
+		(NT -> (T0->SndPreparerm1 + T1->SndPreparerm2 + T2->RcvAbortrm1 + T3->RcvCommitrm2)) +
+		(PT6 -> (T0->SndPreparerm1 + T1->RcvAbortrm1 + T2->SndPreparerm2))
 
 	maps = var1torm2var0torm1->(var1->rm2 + var0->rm1) +
 		var1torm1var0torm2->(var1->rm1 + var0->rm2) +

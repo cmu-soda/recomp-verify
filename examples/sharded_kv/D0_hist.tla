@@ -3,12 +3,13 @@
 
 CONSTANTS Key, Value, Node
 
-VARIABLES owner, oncePut, onceReshard, table, onceRecvTransferMsg
+VARIABLES owner, Fluent2, Fluent1, Fluent0, table
 
-vars == <<owner, oncePut, onceReshard, table, onceRecvTransferMsg>>
+vars == <<owner, Fluent2, Fluent1, Fluent0, table>>
 
 CandSep ==
-TRUE
+/\ \A var0 \in Key : \E var1 \in Node : Fluent0[var1][var0]
+/\ \A var0 \in Key : (Fluent2[var0]) => (Fluent1[var0])
 
 Nil == "nil"
 
@@ -16,23 +17,24 @@ Reshard(k,v,n_old,n_new) ==
 /\ table[n_old][k] = v
 /\ table' = [table EXCEPT![n_old][k] = Nil]
 /\ owner' = [owner EXCEPT![n_old] = (owner[n_old] \ {k})]
-/\ onceReshard' = [onceReshard EXCEPT![k][v][n_old][n_new] = TRUE]
-/\ UNCHANGED<<oncePut, onceRecvTransferMsg>>
+/\ Fluent2' = [Fluent2 EXCEPT![k] = FALSE]
+/\ Fluent0' = [Fluent0 EXCEPT![n_old][k] = TRUE]
+/\ UNCHANGED<<Fluent1>>
 /\ CandSep'
 
 RecvTransferMsg(n,k,v) ==
 /\ table' = [table EXCEPT![n][k] = v]
 /\ owner' = [owner EXCEPT![n] = (owner[n] \cup {k})]
-/\ onceRecvTransferMsg' = [onceRecvTransferMsg EXCEPT![n][k][v] = TRUE]
-/\ UNCHANGED<<oncePut, onceReshard>>
+/\ Fluent1' = [Fluent1 EXCEPT![k] = FALSE]
+/\ Fluent0' = [Fluent0 EXCEPT![n][k] = FALSE]
+/\ UNCHANGED<<Fluent2>>
 /\ CandSep'
 
 Put(n,k,v) ==
 /\ (k \in owner[n])
 /\ table' = [table EXCEPT![n][k] = v]
 /\ UNCHANGED <<owner>>
-/\ oncePut' = [oncePut EXCEPT![n][k][v] = TRUE]
-/\ UNCHANGED<<onceReshard, onceRecvTransferMsg>>
+/\ UNCHANGED<<Fluent2, Fluent1, Fluent0>>
 /\ CandSep'
 
 Next ==
@@ -44,9 +46,9 @@ Init ==
 /\ table = [n \in Node |-> [k \in Key |-> Nil]]
 /\ (owner \in [Node -> SUBSET(Key)])
 /\ (\A i,j \in Node : (\A k \in Key : (((k \in owner[i]) /\ (k \in owner[j])) => i = j)))
-/\ oncePut = [ x0 \in Node |-> [ x1 \in Key |-> [ x2 \in Value |-> FALSE]]]
-/\ onceReshard = [ x0 \in Key |-> [ x1 \in Value |-> [ x2 \in Node |-> [ x3 \in Node |-> FALSE]]]]
-/\ onceRecvTransferMsg = [ x0 \in Node |-> [ x1 \in Key |-> [ x2 \in Value |-> FALSE]]]
+/\ Fluent2 = [ x0 \in Key |-> TRUE]
+/\ Fluent1 = [ x0 \in Key |-> TRUE]
+/\ Fluent0 = [ x0 \in Node |-> [ x1 \in Key |-> TRUE]]
 
 Spec == (Init /\ [][Next]_vars)
 

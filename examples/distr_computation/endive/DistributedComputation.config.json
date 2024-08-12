@@ -1,0 +1,32 @@
+{
+    "preds"  :  [
+        "masterState = \"init\"",
+        "masterState = \"waiting\"",
+        "masterState = \"completed\"",
+        "masterLock = {WI}",
+        "masterWinner = {WI}",
+        "masterLock = {WJ}",
+        "masterWinner = {WJ}",
+        "workerState[WI] = \"idle\"",
+        "workerState[WI] = \"working\"",
+        "workerState[WI] = \"lock\"",
+        "workerState[WI] = \"completed\"",
+        "workerTime[WI] = CompletionTime",
+        "workerState[WJ] = \"idle\"",
+        "workerState[WJ] = \"working\"",
+        "workerState[WJ] = \"lock\"",
+        "workerState[WJ] = \"completed\"",
+        "workerTime[WJ] = CompletionTime"
+    ],
+    "preds_alt" : [],
+    "safety"  :  "OneWinner",
+    "constants"  :  ["CONSTANT", "Workers = {w1,w2,w3}", "w1 = w1", "w2 = w2", "w3 = w3"],
+    "constraint"  :  "",
+    "quant_inv"  :  "\\A WI \\in Workers : \\A WJ \\in Workers : ",
+    "quant_inv_alt"  :  null,
+    "quant_vars": ["WI", "WJ"],
+    "model_consts"  :  "CONSTANT w1,w2,w3",
+    "symmetry" : true,
+    "typeok"  :  "TypeOK",
+    "simulate"  :  true      
+}
