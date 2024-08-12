@@ -266,9 +266,10 @@ public class FormulaSynthWorker implements Runnable {
 				.collect(Collectors.joining(", "));
 		final String strIndicesDecl = "one sig " + strIndices + " extends Idx {}";
 		
-		final String strIndicesNext = IntStream.range(0, maxTraceLen)
+		final String strIndicesNextMulti = IntStream.range(0, maxTraceLen)
 				.mapToObj(i -> "T"+i + "->T"+(i+1))
 				.collect(Collectors.joining(" + "));
+		final String strIndicesNext = strIndicesNextMulti.isEmpty() ? "none->none" : strIndicesNextMulti;
 		final String strInternalActs = this.internalActions
 				.stream()
 				.map(act -> "	no (Fluent.initFl + Fluent.termFl).baseName & " + act)

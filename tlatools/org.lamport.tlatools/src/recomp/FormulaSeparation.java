@@ -111,14 +111,8 @@ public class FormulaSeparation {
     	//final List<String> rawComponents = Decomposition.decompAll(tla, cfg);
     	//final List<String> components = Composition.symbolicCompose(tla, cfg, "CUSTOM", "recomp_map.csv", rawComponents);
     	
-    	/*final String initPosTrace = "one sig PT1 extends PosTrace {} {\n"
-    			+ "	 lastIdx = T3\n"
-    			+ "	 (T0->SndPreparerm1 + T1->SndPreparerm2 + T2->RcvCommitrm2 + T3->RcvCommitrm1) in path\n"
-    			+ "}";*/
-    	// TODO make the init trace len a param
-    	final int initTraceLen = 4;
-    	final Word<String> initTrace = RandTraceUtils.INSTANCE.randTrace(tlcSys.getLTSBuilder().toIncompleteDetAutWithoutAnErrorState(), initTraceLen);
-    	final AlloyTrace initPosTrace = createAlloyTrace(initTrace, "PT1", "PosTrace");
+    	final AlloyTrace initPosTrace = createInitPosTrace();
+    	
     	List<AlloyTrace> posTraces = new ArrayList<>();
     	posTraces.add(initPosTrace);
     	
@@ -177,6 +171,19 @@ public class FormulaSeparation {
     	return Formula.conjunction(invariants).getFormula();
 	}
 	
+	private AlloyTrace createInitPosTrace() {
+		// TODO make the init trace len a param
+    	int initTraceLen = 4;
+    	AlloyTrace initPosTrace = new AlloyTrace();
+    	while (initPosTrace.isEmpty()) {
+        	final Word<String> initTrace =
+        			RandTraceUtils.INSTANCE.randTrace(tlcSys.getLTSBuilder().toIncompleteDetAutWithoutAnErrorState(), initTraceLen);
+        	initPosTrace = createAlloyTrace(initTrace, "PT1", "PosTrace");
+        	++initTraceLen;
+    	}
+    	return initPosTrace;
+	}
+	
 	private AlloyTrace isCandSepInvariant(final String tla, final String cfg, final String name, final String ext) {
     	TLC tlc = new TLC();
     	tlc.modelCheck(tla, cfg);
@@ -213,7 +220,7 @@ public class FormulaSeparation {
 				.collect(Collectors.joining(" + "));
 		final String pathParens = "(" + path + ")";
 		
-		return new AlloyTrace(name, ext, lastIdx, alloyLastIdx, pathParens);
+		return new AlloyTrace(name, ext, lastIdx, alloyLastIdx, pathParens, trace.size());
 	}
 	
 	private Formula synthesizeFormula(final AlloyTrace negTrace, final List<AlloyTrace> posTraces, final int curNumFluents) {

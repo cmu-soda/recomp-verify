@@ -7,6 +7,7 @@ public class AlloyTrace {
 	private final int lastIdx;
 	private final String alloyLastIdx;
 	private final String path;
+	private final int size;
 	
 	public AlloyTrace() {
 		this.hasError = false;
@@ -15,15 +16,18 @@ public class AlloyTrace {
 		this.lastIdx = -1;
 		this.alloyLastIdx = null;
 		this.path = null;
+		this.size = 0;
 	}
 	
-	public AlloyTrace(final String name, final String ext, final int lastIdx, final String alloyLastIdx, final String path) {
+	public AlloyTrace(final String name, final String ext, final int lastIdx, final String alloyLastIdx,
+			final String path, final int size) {
 		this.hasError = true;
 		this.name = name;
 		this.ext = ext;
 		this.lastIdx = lastIdx;
 		this.alloyLastIdx = alloyLastIdx;
 		this.path = path;
+		this.size = size;
 	}
 	
 	public boolean hasError() {
@@ -44,6 +48,14 @@ public class AlloyTrace {
 	
 	public String path() {
 		return this.path;
+	}
+	
+	public int size() {
+		return this.size;
+	}
+	
+	public boolean isEmpty() {
+		return this.size == 0;
 	}
 	
 	public String fullSigString() {
