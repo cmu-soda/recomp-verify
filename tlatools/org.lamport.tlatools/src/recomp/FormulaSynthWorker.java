@@ -71,8 +71,9 @@ public class FormulaSynthWorker implements Runnable {
 	@Override
 	public void run() {
 		// TODO change name from "formula" to "json"
+		PerfTimer timer = new PerfTimer();
 		final String formula = synthesizeFormulaWithVarTypes(this.negTrace, this.posTraces);
-		this.formulaSynth.setFormula(formula, this.id);
+		this.formulaSynth.setFormula(formula, this.id, timer.timeElapsedSeconds());
 	}
 	
 	public void kill() {
@@ -115,6 +116,7 @@ public class FormulaSynthWorker implements Runnable {
 		
 		StringBuilder formulaBuilder = new StringBuilder();
 		try {
+			// TODO do we really need 25GB of memory?
 			final String[] cmd = {"java", "-Djava.library.path=" + openWboLibPath, "-Xmx25G", "-jar", alloyFormlaInferJar, "-f", alloyFormulaInferFile, "--tla", "--json"};
 			this.process = createProcess(cmd);
 			if (this.process == null) {

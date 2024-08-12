@@ -128,6 +128,7 @@ public class FormulaSeparation {
     	int round = 1;
     	while (!formulaSeparates) {
     		System.out.println("Round " + round);
+    		PerfTimer timer = new PerfTimer();
     		
     		// generate a negative trace for this round; we will generate a formula (assumption) that eliminates
     		// the negative trace
@@ -145,6 +146,9 @@ public class FormulaSeparation {
     			
     			// if the latest constraints are unsatisfiable then stop and report this to the user
     			if (formula.isUNSAT()) {
+    				if (invariants.isEmpty()) {
+    					return "UNSAT";
+    				}
     				return Formula.conjunction(invariants).getFormula();
     			}
     			
@@ -165,6 +169,7 @@ public class FormulaSeparation {
     				posTraces.add(posTrace);
     			}
     		}
+    		System.out.println("Round " + round + " took " + timer.timeElapsedSeconds() + " seconds");
     		++round;
 			System.out.println();
     	}

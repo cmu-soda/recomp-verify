@@ -144,6 +144,11 @@ public final class Worker extends IdThread implements IWorker, INextStateFunctor
                             ltsBuilder.addState(nextState);
                             if (isGoodState) {
                             	ltsBuilder.addTransition(curState, action, nextState);
+                            	if (ltsBuilder.size() >= TLC.maxNumStates) {
+                            		// we've reached the maximum capacity for states
+            						// dequeue everything and return as fast as possible
+            						this.squeue.sDequeue((int) this.squeue.size());
+                            	}
             				}
             				else {
             					ltsBuilder.addTransitionToErr(curState, action);

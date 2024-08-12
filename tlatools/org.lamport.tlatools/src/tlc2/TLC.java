@@ -93,6 +93,8 @@ public class TLC {
 	
 	private static AlphabetMembershipTester alphabetTester = null;
 	
+	public static final int maxNumStates = 100000; // 100,000
+	
 	public static String getTlcKey() {
 		if (currentInstance == null) {
 			throw new RuntimeException("TLC.currentInstance is null!");

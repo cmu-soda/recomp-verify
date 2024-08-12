@@ -17,6 +17,7 @@ public class FormulaSynth {
 	
 	private String globalFormula = "{\"formula\":\"UNSAT\"}";
 	private int winningWorkerId = -1;
+	private double winningTimeElapsedInSeconds = 0.0;
 	private final Lock lock = new ReentrantLock();
 	private final Condition aWorkerIsDone = lock.newCondition();
 	
@@ -27,12 +28,13 @@ public class FormulaSynth {
 	 * Manually synchronized
 	 * @param formula
 	 */
-	public void setFormula(final String formula, int workerId) {
+	public void setFormula(final String formula, int workerId, double timeElapsedInSeconds) {
 		lock.lock();
 		try {
 			if (this.globalFormula.contains("UNSAT") && !formula.contains("UNSAT") && !formula.trim().isEmpty()) {
 				this.globalFormula = formula;
 				this.winningWorkerId = workerId;
+				this.winningTimeElapsedInSeconds = timeElapsedInSeconds;
 			}
 			// no matter what, notify the master that this thread is done
 			this.aWorkerIsDone.signalAll();
@@ -43,7 +45,7 @@ public class FormulaSynth {
 	}
 
 	/**
-	 * This methods is intended to be called exactly once.
+	 * This method is intended to be called exactly once.
 	 * @return
 	 */
 	public Formula synthesizeFormula(Set<Map<String,String>> envVarTypes,
@@ -53,6 +55,7 @@ public class FormulaSynth {
 			int maxActParamLen, Set<String> qvars, Set<Set<String>> legalEnvVarCombos,
 			int curNumFluents) {
 		
+		PerfTimer timer = new PerfTimer();
 		this.workers = new HashSet<>();
 		int id = 0;
 		for (final Map<String,String> m : envVarTypes) {
@@ -78,6 +81,10 @@ public class FormulaSynth {
 				++numWorkersDone;
 				final Formula formula = new Formula(this.globalFormula, this.winningWorkerId);
 				if (!formula.isUNSAT()) {
+					System.out.println("Formula synthesis info:\n"
+							+ "  overall (multithread) time: " + timer.timeElapsedSeconds() + " seconds\n"
+							+ "  winning worker id: " + this.winningWorkerId + "\n"
+							+ "  winning worker time: " + this.winningTimeElapsedInSeconds + " seconds");
 					return formula;
 				}
 			}

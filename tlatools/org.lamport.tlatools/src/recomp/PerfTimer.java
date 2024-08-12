@@ -14,4 +14,8 @@ public class PerfTimer {
 	public long timeElapsed() {
 		return System.currentTimeMillis() - this.startTime;
 	}
+	
+	public double timeElapsedSeconds() {
+		return (System.currentTimeMillis() - this.startTime) / 1000.0;
+	}
 }
