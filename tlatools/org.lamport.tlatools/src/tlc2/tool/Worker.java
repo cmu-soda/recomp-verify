@@ -153,9 +153,10 @@ public final class Worker extends IdThread implements IWorker, INextStateFunctor
             				else {
             					ltsBuilder.addTransitionToErr(curState, action);
             					
+            					// TODO this optimization should be allowed after <numPosTraces> errors
         						// we found a violation of: Inv => CandSep
         						// dequeue everything and return as fast as possible
-        						this.squeue.sDequeue((int) this.squeue.size());
+        						//this.squeue.sDequeue((int) this.squeue.size());
             				}
                     	}
                 	}
@@ -511,9 +512,10 @@ public final class Worker extends IdThread implements IWorker, INextStateFunctor
     					this.squeue.sEnqueue(succState);
     				}
 					else {
+    					// TODO this optimization should be allowed after <numPosTraces> errors
 						// we found a violation of: Inv => CandSep
 						// dequeue everything and return as fast as possible
-						this.squeue.sDequeue((int) this.squeue.size());
+						//this.squeue.sDequeue((int) this.squeue.size());
 					}
     			}
     			//StaticTimer.exit();

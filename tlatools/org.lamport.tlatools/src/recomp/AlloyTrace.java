@@ -59,10 +59,11 @@ public class AlloyTrace {
 	}
 	
 	public String fullSigString() {
-		return "one sig " + this.name + " extends " + this.ext + " {} {\n"
+		return this.name + " (" + this.ext + "): " + this.path;
+		/*return "one sig " + this.name + " extends " + this.ext + " {} {\n"
 			+ "	lastIdx = " + this.alloyLastIdx + "\n"
 			+ "	path = " + this.path + "\n"
-			+ "}";
+			+ "}";*/
 	}
 	
 	@Override

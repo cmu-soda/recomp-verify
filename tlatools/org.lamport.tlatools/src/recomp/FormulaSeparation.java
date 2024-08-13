@@ -11,6 +11,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import cmu.isr.ts.LTS;
+import cmu.isr.ts.lts.MultiTraceCex;
 import cmu.isr.ts.lts.RandTraceUtils;
 import cmu.isr.ts.lts.SafetyUtils;
 import net.automatalib.words.Word;
@@ -94,7 +95,7 @@ public class FormulaSeparation {
 						.collect(Collectors.toSet()))
 				.collect(Collectors.toSet());
 		
-		verbose = false;
+		verbose = true;
 	}
 	
 	public String synthesizeSepInvariant() {
@@ -120,6 +121,7 @@ public class FormulaSeparation {
     	boolean formulaSeparates = false;
     	
     	int round = 1;
+    	int numPosTraces = 1; // TODO this (plus dynamic tuning) should be params
     	while (!formulaSeparates) {
     		System.out.println("Round " + round);
     		PerfTimer timer = new PerfTimer();
@@ -128,7 +130,7 @@ public class FormulaSeparation {
     		// the negative trace
     		final Formula invariant = Formula.conjunction(invariants);
         	final String tlaCompHV = writeHistVarsSpec(tlaComp, cfgComp, invariant, true);
-        	final AlloyTrace negTrace = isCandSepInvariant(tlaCompHV, cfgNegTraces, "NT", "NegTrace");
+        	final AlloyTrace negTrace = genOneCexTraceForCandSepInvariant(tlaCompHV, cfgNegTraces, "NT", "NegTrace");
     		formulaSeparates = !negTrace.hasError();
     		Utils.printVerbose(verbose, "negTrace:\n" + negTrace.fullSigString());
 
@@ -148,10 +150,10 @@ public class FormulaSeparation {
     			
     			// generate positive traces until the formula becomes an invariant
     			final int ptNum = posTraces.size() + 1;
-    			final String ptName = "PT" + ptNum;
+    			//final String ptName = "PT" + ptNum;
     	    	final String tlaSysHV = writeHistVarsSpec(tlaSys, cfgSys, formula, false);
-    			final AlloyTrace posTrace = isCandSepInvariant(tlaSysHV, cfgPosTraces, ptName, "PosTrace");
-    			isInvariant = !posTrace.hasError();
+    			final Set<AlloyTrace> newPosTraces = genCexTraceForCandSepInvariant(tlaSysHV, cfgPosTraces, "PT", ptNum, "PosTrace", numPosTraces);
+    			isInvariant = newPosTraces.stream().allMatch(t -> !t.hasError());
     			
     			System.out.println("Synthesized: " + formula);
     			if (isInvariant) {
@@ -159,9 +161,13 @@ public class FormulaSeparation {
     				System.out.println("The formula is an invariant! Moving to the next round.");
     			}
     			else {
-    	    		Utils.printVerbose(verbose, "posTrace:\n" + posTrace.fullSigString());
-    				posTraces.add(posTrace);
+    				for (final AlloyTrace posTrace : newPosTraces) {
+        	    		Utils.printVerbose(verbose, "posTrace:\n" + posTrace.fullSigString());
+    				}
+    				posTraces.addAll(newPosTraces);
+    				//++numPosTraces;
     			}
+    			System.out.println();
     		}
     		System.out.println("Round " + round + " took " + timer.timeElapsedSeconds() + " seconds");
     		++round;
@@ -176,28 +182,43 @@ public class FormulaSeparation {
     	int initTraceLen = 4;
     	AlloyTrace initPosTrace = new AlloyTrace();
     	while (initPosTrace.isEmpty()) {
-        	final Word<String> initTrace =
-        			RandTraceUtils.INSTANCE.randTrace(tlcSys.getLTSBuilder().toIncompleteDetAutWithoutAnErrorState(), initTraceLen);
+        	final List<String> initTrace =
+        			RandTraceUtils.INSTANCE.randTrace(tlcSys.getLTSBuilder().toIncompleteDetAutWithoutAnErrorState(), initTraceLen)
+        			.stream()
+        			.collect(Collectors.toList());
         	initPosTrace = createAlloyTrace(initTrace, "PT1", "PosTrace");
         	++initTraceLen;
     	}
     	return initPosTrace;
 	}
 	
-	private AlloyTrace isCandSepInvariant(final String tla, final String cfg, final String name, final String ext) {
+	private AlloyTrace genOneCexTraceForCandSepInvariant(final String tla, final String cfg, final String name, final String ext) {
+		final Set<AlloyTrace> traces = genCexTraceForCandSepInvariant(tla,cfg,name,1,ext,1);
+		Utils.assertTrue(traces.size() == 1, "expected one trace but there were " + traces.size());
+    	return Utils.chooseOne(traces);
+	}
+	
+	private Set<AlloyTrace> genCexTraceForCandSepInvariant(final String tla, final String cfg, final String trName, int trNum,
+			final String ext, int numTraces) {
     	TLC tlc = new TLC();
     	tlc.modelCheck(tla, cfg);
     	final LTS<Integer, String> lts = tlc.getLTSBuilder().toIncompleteDetAutIncludingAnErrorState();
     	
     	if (SafetyUtils.INSTANCE.ltsIsSafe(lts)) {
-    		return new AlloyTrace();
+    		return Utils.setOf(new AlloyTrace());
     	}
 		
 		// if candSep isn't an invariant, return a trace that should be covered by the formula
-		return createAlloyTrace(SafetyUtils.INSTANCE.findErrorTrace(lts), name, ext);
+    	final Set<List<String>> errTraces = MultiTraceCex.INSTANCE.findErrorTraces(lts, numTraces, this.tlcComp.actionsInSpec());
+    	Set<AlloyTrace> cexs = new HashSet<>();
+    	for (final List<String> errTrace : errTraces) {
+    		final String name = trName + (trNum++);
+    		cexs.add(createAlloyTrace(errTrace, name, ext));
+    	}
+    	return cexs;
 	}
 	
-	private AlloyTrace createAlloyTrace(final Word<String> word, final String name, final String ext) {
+	private AlloyTrace createAlloyTrace(final List<String> word, final String name, final String ext) {
 		// use the alphabet for the component
 		final Set<String> alphabet = this.tlcComp.actionsInSpec();
 		
