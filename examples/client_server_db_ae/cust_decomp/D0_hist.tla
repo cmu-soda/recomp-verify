@@ -3,16 +3,15 @@ EXTENDS Naturals, Sequences, FiniteSets, TLC
 
 CONSTANTS Node, Request, Response, DbRequestId
 
-VARIABLES Fluent8, Fluent7, request_sent, Fluent6, response_sent, Fluent5, Fluent4, match, Fluent3, response_received, Fluent2, Fluent1, Fluent0, t
+VARIABLES t, request_sent, Fluent6, response_sent, Fluent5, Fluent4, match, Fluent3, response_received, Fluent2, Fluent1, Fluent0
 
-vars == <<Fluent8, Fluent7, request_sent, Fluent6, response_sent, Fluent5, Fluent4, match, Fluent3, response_received, Fluent2, Fluent1, Fluent0, t>>
+vars == <<t, request_sent, Fluent6, response_sent, Fluent5, Fluent4, match, Fluent3, response_received, Fluent2, Fluent1, Fluent0>>
 
 CandSep ==
-/\ \A var0 \in DbRequestId : (Fluent0[var0]) => (Fluent1[var0])
-/\ \A var0 \in Response : (Fluent2[var0]) => (Fluent3[var0])
-/\ \A var0 \in DbRequestId : \E var1 \in Request : Fluent4[var0][var1]
-/\ \A var0 \in DbRequestId : (Fluent5[var0]) => (Fluent6[var0])
-/\ \A var0 \in DbRequestId : \A var1 \in Response : (Fluent7[var1][var0]) => (Fluent8[var1][var0])
+/\ \A var0 \in Response : (Fluent1[var0]) => (Fluent0[var0])
+/\ \A var0 \in Request : (Fluent3[var0]) => (Fluent2[var0])
+/\ \A var0 \in DbRequestId : \E var1 \in Request : Fluent4[var1][var0]
+/\ \A var0 \in DbRequestId : (Fluent6[var0]) => (Fluent5[var0])
 
 NoneWithId(i) == (\A n \in Node : (<<i,n>> \notin t))
 
@@ -24,7 +23,7 @@ ResponseMatched(n,p) ==
 NewRequest(n,r) ==
 /\ request_sent' = (request_sent \cup {<<n,r>>})
 /\ UNCHANGED <<match,response_sent,response_received,t>>
-/\ UNCHANGED<<Fluent8, Fluent7, Fluent6, Fluent5, Fluent4, Fluent3, Fluent2, Fluent1, Fluent0>>
+/\ UNCHANGED<<Fluent6, Fluent5, Fluent4, Fluent3, Fluent2, Fluent1, Fluent0>>
 /\ CandSep'
 
 ServerProcessRequest(n,r,i) ==
@@ -32,41 +31,37 @@ ServerProcessRequest(n,r,i) ==
 /\ t' = (t \cup {<<i,n>>})
 /\ (<<n,r>> \in request_sent)
 /\ UNCHANGED <<match,request_sent,response_sent,response_received>>
-/\ Fluent6' = [Fluent6 EXCEPT![i] = TRUE]
-/\ Fluent4' = [Fluent4 EXCEPT![i][r] = FALSE]
-/\ Fluent1' = [Fluent1 EXCEPT![i] = TRUE]
-/\ Fluent0' = [Fluent0 EXCEPT![i] = TRUE]
-/\ UNCHANGED<<Fluent8, Fluent7, Fluent5, Fluent3, Fluent2>>
+/\ Fluent6' = [Fluent6 EXCEPT![i] = FALSE]
+/\ Fluent5' = [Fluent5 EXCEPT![i] = FALSE]
+/\ Fluent4' = [Fluent4 EXCEPT![r][i] = FALSE]
+/\ Fluent2' = [Fluent2 EXCEPT![r] = TRUE]
+/\ UNCHANGED<<Fluent3, Fluent1, Fluent0>>
 /\ CandSep'
 
 DbProcessRequest(i,r,p) ==
 /\ (<<r,p>> \in match)
 /\ UNCHANGED <<match,request_sent,response_sent,response_received,t>>
-/\ Fluent8' = [Fluent8 EXCEPT![p][i] = TRUE]
 /\ Fluent5' = [Fluent5 EXCEPT![i] = TRUE]
-/\ Fluent4' = [Fluent4 EXCEPT![i][r] = FALSE]
-/\ Fluent3' = [Fluent3 EXCEPT![p] = FALSE]
-/\ Fluent2' = [Fluent2 EXCEPT![p] = FALSE]
-/\ Fluent1' = [Fluent1 EXCEPT![i] = FALSE]
-/\ Fluent0' = [Fluent0 EXCEPT![i] = FALSE]
-/\ UNCHANGED<<Fluent7, Fluent6>>
+/\ Fluent4' = [Fluent4 EXCEPT![r][i] = FALSE]
+/\ Fluent3' = [Fluent3 EXCEPT![r] = TRUE]
+/\ Fluent1' = [Fluent1 EXCEPT![p] = FALSE]
+/\ UNCHANGED<<Fluent6, Fluent2, Fluent0>>
 /\ CandSep'
 
 ServerProcessDbResponse(n,i,p) ==
 /\ (<<i,n>> \in t)
 /\ response_sent' = (response_sent \cup {<<n,p>>})
 /\ UNCHANGED <<match,request_sent,response_received,t>>
-/\ Fluent7' = [Fluent7 EXCEPT![p][i] = TRUE]
-/\ Fluent3' = [Fluent3 EXCEPT![p] = FALSE]
-/\ Fluent1' = [Fluent1 EXCEPT![i] = FALSE]
-/\ UNCHANGED<<Fluent8, Fluent6, Fluent5, Fluent4, Fluent2, Fluent0>>
+/\ Fluent6' = [Fluent6 EXCEPT![i] = TRUE]
+/\ Fluent0' = [Fluent0 EXCEPT![p] = FALSE]
+/\ UNCHANGED<<Fluent5, Fluent4, Fluent3, Fluent2, Fluent1>>
 /\ CandSep'
 
 ReceiveResponse(n,p) ==
 /\ (<<n,p>> \in response_sent)
 /\ response_received' = (response_received \cup {<<n,p>>})
 /\ UNCHANGED <<match,request_sent,response_sent,t>>
-/\ UNCHANGED<<Fluent8, Fluent7, Fluent6, Fluent5, Fluent4, Fluent3, Fluent2, Fluent1, Fluent0>>
+/\ UNCHANGED<<Fluent6, Fluent5, Fluent4, Fluent3, Fluent2, Fluent1, Fluent0>>
 /\ CandSep'
 
 Next ==
@@ -82,15 +77,13 @@ Init ==
 /\ response_sent = {}
 /\ response_received = {}
 /\ t = {}
-/\ Fluent8 = [ x0 \in Response |-> [ x1 \in DbRequestId |-> FALSE]]
-/\ Fluent7 = [ x0 \in Response |-> [ x1 \in DbRequestId |-> FALSE]]
 /\ Fluent6 = [ x0 \in DbRequestId |-> FALSE]
-/\ Fluent5 = [ x0 \in DbRequestId |-> FALSE]
-/\ Fluent4 = [ x0 \in DbRequestId |-> [ x1 \in Request |-> TRUE]]
-/\ Fluent3 = [ x0 \in Response |-> TRUE]
-/\ Fluent2 = [ x0 \in Response |-> TRUE]
-/\ Fluent1 = [ x0 \in DbRequestId |-> TRUE]
-/\ Fluent0 = [ x0 \in DbRequestId |-> FALSE]
+/\ Fluent5 = [ x0 \in DbRequestId |-> TRUE]
+/\ Fluent4 = [ x0 \in Request |-> [ x1 \in DbRequestId |-> TRUE]]
+/\ Fluent3 = [ x0 \in Request |-> FALSE]
+/\ Fluent2 = [ x0 \in Request |-> FALSE]
+/\ Fluent1 = [ x0 \in Response |-> TRUE]
+/\ Fluent0 = [ x0 \in Response |-> TRUE]
 
 Spec == (Init /\ [][Next]_vars)
 

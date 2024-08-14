@@ -183,10 +183,12 @@ public class Utils {
 	}
 	
 	
-    public static <T> Set<T> union(Set<T> s1, Set<T> s2) {
+    @SafeVarargs
+	public static <T> Set<T> union(Set<T>... sets) {
     	Set<T> un = new HashSet<T>();
-    	un.addAll(s1);
-    	un.addAll(s2);
+    	for (final Set<T> s : sets) {
+    		un.addAll(s);
+    	}
     	return un;
     }
     

@@ -62,7 +62,7 @@ public class Formula {
 	}
 	
 	
-	public Formula(final String json, int workerId) {
+	public Formula(final String json) {
 		try {
 			final JSONObject info = new JSONParser(new JSONLexer(json)).parse();
 			
@@ -83,7 +83,7 @@ public class Formula {
 		catch (gov.nasa.jpf.JPFException e) {
 			System.err.println("The following JSON is malformed:");
 			System.err.println(json);
-			System.err.println("The JSON output came from worker: " + workerId);
+			//System.err.println("The JSON output came from worker: " + workerId);
 			throw e;
 		}
 	}
@@ -122,6 +122,17 @@ public class Formula {
 	
 	public int getNumFluents() {
 		return getFluentVars().size();
+	}
+	
+	public String toJson() {
+		final String fluentsObjContents = this.fluents.keySet()
+				.stream()
+				.map(f -> "\"" + f + "\":" + this.fluents.get(f).toJson())
+				.collect(Collectors.joining(","));
+		final String fluentsObj = "{" + fluentsObjContents + "}";
+		final String escapedFormula = this.formula.replace("\\", "\\\\");
+		
+		return "{\"formula\":\"" + escapedFormula + "\",\"fluents\":" + fluentsObj + "}";
 	}
 	
 	@Override

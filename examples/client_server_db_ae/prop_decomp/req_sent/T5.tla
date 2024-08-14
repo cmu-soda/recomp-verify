@@ -1,15 +1,9 @@
 --------------------------- MODULE T5 ---------------------------
 EXTENDS Naturals, Sequences, FiniteSets, TLC
 
+CONSTANTS Node, Request, Response, DbRequestId
+
 VARIABLES db_response_sent
-
-Node == {"n1","n2"}
-
-Request == {"req1","req2"}
-
-Response == {"resp1","resp2","resp3"}
-
-DbRequestId == {"id1","id2"}
 
 vars == <<db_response_sent>>
 

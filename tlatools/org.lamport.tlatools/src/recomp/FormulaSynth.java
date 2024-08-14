@@ -85,7 +85,7 @@ public class FormulaSynth {
 					this.aWorkerIsDone.await();
 				}
 				catch (InterruptedException e) {}
-				final Formula formula = new Formula(this.globalFormula, this.winningWorkerId);
+				final Formula formula = new Formula(this.globalFormula);
 				if (!formula.isUNSAT()) {
 					System.out.println("Formula synthesis info:\n"
 							+ "  overall (multithread) time: " + timer.timeElapsedSeconds() + " seconds\n"

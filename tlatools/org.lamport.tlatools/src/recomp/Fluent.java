@@ -44,6 +44,42 @@ public class Fluent {
 		}
 	}
 	
+	public String toJson() {
+		final String paramTypes = "\"paramTypes\":[" +
+				this.paramTypes
+					.stream()
+					.map(pt -> "\"" + pt + "\"")
+					.collect(Collectors.joining(","))
+				+ "]";
+		final String initially = "\"initially\":\"" + this.initially + "\"";
+		final String init = "\"init\":[" +
+				this.init
+				.stream()
+				.map(pt -> "\"" + pt + "\"")
+				.collect(Collectors.joining(","))
+			+ "]";
+		final String term = "\"term\":[" +
+				this.term
+				.stream()
+				.map(pt -> "\"" + pt + "\"")
+				.collect(Collectors.joining(","))
+			+ "]";
+		
+		final String symActMapsContents = this.symActParamMaps.keySet()
+				.stream()
+				.map(m -> {
+					final String strMap = this.symActParamMaps.get(m)
+							.stream()
+							.map(i -> i.toString())
+							.collect(Collectors.joining(","));
+					return "\"" + m + "\":[" + strMap + "]";
+				})
+				.collect(Collectors.joining(","));
+		final String symActMaps = "\"symActParamMaps\":{" + symActMapsContents + "}";
+		
+		return "{" + String.join(",", List.of(paramTypes, initially, init, term, symActMaps)) + "}";
+	}
+	
 	@Override
 	public String toString() {
 		return this.name + ":\n"

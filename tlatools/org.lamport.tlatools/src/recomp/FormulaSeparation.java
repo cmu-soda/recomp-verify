@@ -26,8 +26,8 @@ public class FormulaSeparation {
 	private final String cfgSys;
 	private final String tlaComp;
 	private final String cfgComp;
-	private final boolean usePropFile;
-	private final String propFile;
+	private final boolean useIntermediateProp;
+	private final Formula intermediateProp;
 	private final TLC tlcSys;
 	private final TLC tlcComp;
 	private final Set<String> internalActions;
@@ -46,8 +46,8 @@ public class FormulaSeparation {
 		this.tlaComp = tlaComp;
 		this.cfgComp = cfgComp;
 		
-		this.usePropFile = !propFile.equals("none");
-		this.propFile = propFile;
+		this.useIntermediateProp = !propFile.equals("none");
+		this.intermediateProp = this.useIntermediateProp ? new Formula( String.join("",Utils.fileContents(propFile)) ) : null;
 		
 		// TODO bound model checking to, say, 1 mil states
 		tlcSys = new TLC();
@@ -106,7 +106,7 @@ public class FormulaSeparation {
     	
     	// config for producing negative traces
     	final String cfgNegTraces = "neg_traces.cfg";
-    	final String negTracesSafety = this.usePropFile ? "\nINVARIANT Safety" : "";
+    	final String negTracesSafety = this.useIntermediateProp ? "\nINVARIANT Safety" : "";
     	Utils.writeFile(cfgNegTraces, String.join("\n", Utils.fileContents(cfgComp)) + negTracesSafety);
     	
     	//final List<String> rawComponents = Decomposition.decompAll(tla, cfg);
@@ -173,6 +173,10 @@ public class FormulaSeparation {
     		++round;
 			System.out.println();
     	}
+    	
+    	// write out the formula to a file
+    	final String tlaCompBaseName = this.tlaComp.replaceAll("\\.tla", "");
+    	Utils.writeFile(tlaCompBaseName + ".inv", Formula.conjunction(invariants).toJson());
     	
     	return Formula.conjunction(invariants).getFormula();
 	}
@@ -287,9 +291,15 @@ public class FormulaSeparation {
 					final String dname = d.getName().toString();
 					if (tlc.actionsInSpec().contains(dname)) {
 						d.addFluentVars(candSep, candSepInActions);
+						if (this.useIntermediateProp) {
+							d.addFluentVars(this.intermediateProp, candSepInActions);
+						}
 					}
 					else if (dname.equals("Init")) {
-						d.addFluentInitVars(candSep); //, actionParamTypes);
+						d.addFluentInitVars(candSep);
+						if (this.useIntermediateProp) {
+							d.addFluentInitVars(this.intermediateProp);
+						}
 					}
 					return d;
 				 })
@@ -324,8 +334,8 @@ public class FormulaSeparation {
 		
 		// add the safety property in (if one is provided)
 		// only include the safety property when writing negative traces, i.e. when candSepInActions is true
-		final String safetyDecl = !(this.usePropFile && candSepInActions) ? "" :
-			"\nSafety ==\n" + String.join("\n", Utils.fileContents(this.propFile)) + "\n";
+		final String safetyDecl = !(this.useIntermediateProp && candSepInActions) ? "" :
+			"\nSafety ==\n" + this.intermediateProp.getFormula() + "\n";
 		
 		// construct the spec
 		final String specBody = String.join("\n\n", strModuleNodes);
@@ -337,10 +347,14 @@ public class FormulaSeparation {
         		Arrays.asList("Bags", "FiniteSets", "Functions", "Integers", "Json", "Naturals",
         				"NaturalsInduction", "RealTime", "Sequences", "SequencesExt", "TLC", "TLCExt");
         ArrayList<String> moduleNameList = Utils.filterArrayWhiteList(moduleWhiteList, ft.getModuleNames());
+        
+        final Set<String> stateVars = this.useIntermediateProp ?
+        		Utils.union(tlc.stateVarsInSpec(), candSep.getFluentVars(), this.intermediateProp.getFluentVars()) :
+            	Utils.union(tlc.stateVarsInSpec(), candSep.getFluentVars());
 
         final String moduleList = String.join(", ", moduleNameList);
         final String constantsDecl = tlc.constantsInSpec().isEmpty() ? "" : "CONSTANTS " + String.join(", ", tlc.constantsInSpec());
-        final String varList = String.join(", ", Utils.union(tlc.stateVarsInSpec(), candSep.getFluentVars()));
+        final String varList = String.join(", ", stateVars);
         final String modulesDecl = moduleList.isEmpty() ? "" : "EXTENDS " + moduleList;
         final String varsDecl = "VARIABLES " + varList;
         final String varsListDecl = "vars == <<" + varList + ">>";

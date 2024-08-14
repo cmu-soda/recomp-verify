@@ -55,6 +55,8 @@ TypeOK ==
 
 Safety == (\A n \in Node, p \in Response : (\E r \in Request : ((<<n,p>> \in response_received) => (<<n,r>> \in request_sent))))
 
+\* time python3 endive.py --spec benchmarks/C1 --seed 23 --ninvs 15000 --niters 3 --nrounds 4 --num_simulate_traces 50000 --simulate_depth 6 --tlc_workers 6
+\* time: 7.997 seconds
 IndInv ==
     /\ TypeOK
     /\ Safety
