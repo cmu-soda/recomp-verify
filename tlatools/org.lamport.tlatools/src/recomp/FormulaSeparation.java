@@ -138,7 +138,10 @@ public class FormulaSeparation {
 			// keep generating positive traces until the formula turns into an invariant
     		boolean isInvariant = false;
     		while (!formulaSeparates && !isInvariant) {
-    			final Formula formula = synthesizeFormula(negTrace, posTraces, invariant.getNumFluents());
+    			final int numFluents = this.useIntermediateProp ?
+    					invariant.getNumFluents() + this.intermediateProp.getPastNumFluents() + 1 :
+    					invariant.getNumFluents();
+    			final Formula formula = synthesizeFormula(negTrace, posTraces, numFluents);
     			
     			// if the latest constraints are unsatisfiable then stop and report this to the user
     			if (formula.isUNSAT()) {

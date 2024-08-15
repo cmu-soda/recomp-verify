@@ -124,13 +124,32 @@ public class Formula {
 		return getFluentVars().size();
 	}
 	
+	/**
+	 * Determines the number of fluents by the number encoded into each fluent
+	 * name. This effectively tells us how many fluents have been created in the
+	 * past. This method is useful to get the number of previous fluents from
+	 * intermediate properties; we can increment this number so the next fluent
+	 * doesn't clash with any previous one. 
+	 * @return
+	 */
+	public int getPastNumFluents() {
+		return this.fluents.keySet()
+				.stream()
+				.map(f -> f.replace("Fluent", ""))
+				.mapToInt(f -> Integer.parseInt(f))
+				.max()
+				.getAsInt();
+	}
+	
 	public String toJson() {
 		final String fluentsObjContents = this.fluents.keySet()
 				.stream()
 				.map(f -> "\"" + f + "\":" + this.fluents.get(f).toJson())
 				.collect(Collectors.joining(","));
 		final String fluentsObj = "{" + fluentsObjContents + "}";
-		final String escapedFormula = this.formula.replace("\\", "\\\\");
+		final String escapedFormula = this.formula
+				.replace("\\", "\\\\")  // escape backslashes
+				.replace("\n", "\\n"); // escape newlines
 		
 		return "{\"formula\":\"" + escapedFormula + "\",\"fluents\":" + fluentsObj + "}";
 	}
