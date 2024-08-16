@@ -37,7 +37,7 @@ public class FormulaSeparation {
 	private final int maxNumVarsPerType;
 	private final Set<String> qvars;
 	private final Set<Set<String>> legalEnvVarCombos;
-	private final boolean verbose;
+	private final int maxNumPosTracesToAdd;
 	
 	public FormulaSeparation(final String tlaSys, final String cfgSys, final String tlaComp, final String cfgComp,
 			final String propFile, final List<Utils.Pair<String,String>> otherComponents) {
@@ -95,7 +95,7 @@ public class FormulaSeparation {
 						.collect(Collectors.toSet()))
 				.collect(Collectors.toSet());
 		
-		verbose = true;
+    	maxNumPosTracesToAdd = 3; // TODO this should be a param
 	}
 	
 	public String synthesizeSepInvariant() {
@@ -124,6 +124,7 @@ public class FormulaSeparation {
     	int numPosTraces = 1; // TODO this (plus dynamic tuning) should be params
     	while (!formulaSeparates) {
     		System.out.println("Round " + round);
+    		System.out.println("-------");
     		PerfTimer timer = new PerfTimer();
     		
     		// generate a negative trace for this round; we will generate a formula (assumption) that eliminates
@@ -132,7 +133,8 @@ public class FormulaSeparation {
         	final String tlaCompHV = writeHistVarsSpec(tlaComp, cfgComp, invariant, true);
         	final AlloyTrace negTrace = genOneCexTraceForCandSepInvariant(tlaCompHV, cfgNegTraces, "NT", "NegTrace");
     		formulaSeparates = !negTrace.hasError();
-    		Utils.printVerbose(verbose, "negTrace:\n" + negTrace.fullSigString());
+    		System.out.println("attempting to eliminate the following neg trace this round:");
+    		System.out.println(negTrace.fullSigString());
 
     		// use the negative trace and all existing positive traces to generate a formula
 			// keep generating positive traces until the formula turns into an invariant
@@ -145,9 +147,7 @@ public class FormulaSeparation {
     			
     			// if the latest constraints are unsatisfiable then stop and report this to the user
     			if (formula.isUNSAT()) {
-    				if (invariants.isEmpty()) {
-    					return "UNSAT";
-    				}
+    				invariants.add(formula);
     				return Formula.conjunction(invariants).getFormula();
     			}
     			
@@ -164,13 +164,15 @@ public class FormulaSeparation {
     				System.out.println("The formula is an invariant! Moving to the next round.");
     			}
     			else {
+        			System.out.println();
+        			System.out.println("new pos traces:");
     				for (final AlloyTrace posTrace : newPosTraces) {
-        	    		Utils.printVerbose(verbose, "posTrace:\n" + posTrace.fullSigString());
+    					System.out.println(posTrace.fullSigString());
     				}
     				posTraces.addAll(newPosTraces);
     				//++numPosTraces;
+    				numPosTraces = Math.min(numPosTraces+1, this.maxNumPosTracesToAdd);
     			}
-    			System.out.println();
     		}
     		System.out.println("Round " + round + " took " + timer.timeElapsedSeconds() + " seconds");
     		++round;

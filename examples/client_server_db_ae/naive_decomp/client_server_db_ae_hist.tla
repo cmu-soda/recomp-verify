@@ -3,12 +3,12 @@ EXTENDS Naturals, Sequences, FiniteSets, TLC
 
 CONSTANTS Node, Request, Response, DbRequestId
 
-VARIABLES db_request_sent, Fluent9, Fluent8, t, request_sent, response_sent, match, response_received, db_response_sent
+VARIABLES db_request_sent, Fluent8, t, Fluent7, request_sent, response_sent, match, response_received, db_response_sent
 
-vars == <<db_request_sent, Fluent9, Fluent8, t, request_sent, response_sent, match, response_received, db_response_sent>>
+vars == <<db_request_sent, Fluent8, t, Fluent7, request_sent, response_sent, match, response_received, db_response_sent>>
 
 CandSep ==
-\E var0 \in Node : \A var1 \in Response : (Fluent8[var0]) => (Fluent9[var1])
+\A var0 \in Node : \E var1 \in Node : (Fluent8[var0]) => (Fluent7[var1])
 
 NoneWithId(i) == (\A n \in Node : (<<i,n>> \notin t))
 
@@ -20,7 +20,7 @@ ResponseMatched(n,p) ==
 NewRequest(n,r) ==
 /\ request_sent' = (request_sent \cup {<<n,r>>})
 /\ UNCHANGED <<match,response_sent,response_received,db_request_sent,db_response_sent,t>>
-/\ UNCHANGED<<Fluent9, Fluent8>>
+/\ UNCHANGED<<Fluent8, Fluent7>>
 
 ServerProcessRequest(n,r,i) ==
 /\ (<<n,r>> \in request_sent)
@@ -28,30 +28,29 @@ ServerProcessRequest(n,r,i) ==
 /\ t' = (t \cup {<<i,n>>})
 /\ db_request_sent' = (db_request_sent \cup {<<i,r>>})
 /\ UNCHANGED <<match,request_sent,response_sent,response_received,db_response_sent>>
-/\ Fluent8' = [Fluent8 EXCEPT![n] = TRUE]
-/\ UNCHANGED<<Fluent9>>
+/\ Fluent7' = [Fluent7 EXCEPT![n] = FALSE]
+/\ UNCHANGED<<Fluent8>>
 
 DbProcessRequest(i,r,p) ==
 /\ (<<i,r>> \in db_request_sent)
 /\ (<<r,p>> \in match)
 /\ db_response_sent' = (db_response_sent \cup {<<i,p>>})
 /\ UNCHANGED <<match,request_sent,response_sent,response_received,db_request_sent,t>>
-/\ UNCHANGED<<Fluent9, Fluent8>>
+/\ UNCHANGED<<Fluent8, Fluent7>>
 
 ServerProcessDbResponse(n,i,p) ==
 /\ (<<i,p>> \in db_response_sent)
 /\ (<<i,n>> \in t)
 /\ response_sent' = (response_sent \cup {<<n,p>>})
 /\ UNCHANGED <<match,request_sent,response_received,db_request_sent,db_response_sent,t>>
-/\ UNCHANGED<<Fluent9, Fluent8>>
+/\ UNCHANGED<<Fluent8, Fluent7>>
 
 ReceiveResponse(n,p) ==
 /\ (<<n,p>> \in response_sent)
 /\ response_received' = (response_received \cup {<<n,p>>})
 /\ UNCHANGED <<match,request_sent,response_sent,db_request_sent,db_response_sent,t>>
-/\ Fluent9' = [Fluent9 EXCEPT![p] = FALSE]
 /\ Fluent8' = [Fluent8 EXCEPT![n] = TRUE]
-/\ UNCHANGED<<>>
+/\ UNCHANGED<<Fluent7>>
 
 Next ==
 \/ (\E n \in Node, r \in Request : NewRequest(n,r))
@@ -68,8 +67,8 @@ Init ==
 /\ db_request_sent = {}
 /\ db_response_sent = {}
 /\ t = {}
-/\ Fluent9 = [ x0 \in Response |-> TRUE]
 /\ Fluent8 = [ x0 \in Node |-> FALSE]
+/\ Fluent7 = [ x0 \in Node |-> TRUE]
 
 Spec == (Init /\ [][Next]_vars)
 
