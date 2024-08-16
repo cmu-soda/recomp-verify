@@ -8,7 +8,7 @@ VARIABLES db_request_sent, t, request_sent, response_sent, match, response_recei
 vars == <<db_request_sent, t, request_sent, response_sent, match, response_received, Fluent1, Fluent0, db_response_sent>>
 
 CandSep ==
-\A var0 \in Node : (Fluent0[var0]) => (Fluent1[var0])
+\A var0 \in Node : (Fluent1[var0]) => (Fluent0[var0])
 
 NoneWithId(i) == (\A n \in Node : (<<i,n>> \notin t))
 
@@ -23,8 +23,8 @@ ServerProcessRequest(n,r,i) ==
 /\ t' = (t \cup {<<i,n>>})
 /\ db_request_sent' = (db_request_sent \cup {<<i,r>>})
 /\ UNCHANGED <<match,request_sent,response_sent,response_received,db_response_sent>>
-/\ Fluent1' = [Fluent1 EXCEPT![n] = TRUE]
-/\ UNCHANGED<<Fluent0>>
+/\ Fluent0' = [Fluent0 EXCEPT![n] = TRUE]
+/\ UNCHANGED<<Fluent1>>
 
 DbProcessRequest(i,r,p) ==
 /\ (<<i,r>> \in db_request_sent)
@@ -44,8 +44,8 @@ ReceiveResponse(n,p) ==
 /\ (<<n,p>> \in response_sent)
 /\ response_received' = (response_received \cup {<<n,p>>})
 /\ UNCHANGED <<match,request_sent,response_sent,db_request_sent,db_response_sent,t>>
-/\ Fluent0' = [Fluent0 EXCEPT![n] = TRUE]
-/\ UNCHANGED<<Fluent1>>
+/\ Fluent1' = [Fluent1 EXCEPT![n] = TRUE]
+/\ UNCHANGED<<Fluent0>>
 
 Next ==
 \/ (\E n \in Node, r \in Request : NewRequest(n,r))

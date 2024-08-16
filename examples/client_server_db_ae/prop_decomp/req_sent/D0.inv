@@ -1,0 +1,1 @@
+{"formula":"/\\ \\A var0 \\in Node : (Fluent1[var0]) => (Fluent0[var0])","fluents":{"Fluent1":{"paramTypes":["Node"],"initially":"FALSE","init":["ReceiveResponse"],"term":[],"symActParamMaps":{"ReceiveResponse":[0]}},"Fluent0":{"paramTypes":["Node"],"initially":"FALSE","init":["ServerProcessRequest"],"term":[],"symActParamMaps":{"ServerProcessRequest":[0]}}}}
