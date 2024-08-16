@@ -3,9 +3,9 @@ EXTENDS Naturals, Sequences, Integers
 
 CONSTANTS RMs
 
-VARIABLES tmState, tmPrepared, onceRcvPrepare, onceSndCommit, onceSndAbort
+VARIABLES Fluent11, tmState, Fluent9, Fluent8, Fluent7, Fluent6, tmPrepared, Fluent10
 
-vars == <<tmState, tmPrepared, onceRcvPrepare, onceSndCommit, onceSndAbort>>
+vars == <<Fluent11, tmState, Fluent9, Fluent8, Fluent7, Fluent6, tmPrepared, Fluent10>>
 
 CandSep ==
 TRUE
@@ -15,16 +15,22 @@ Message == ([type : {"Prepared"},theRM : RMs] \cup [type : {"Commit","Abort"}])
 Init ==
 /\ tmState = "init"
 /\ tmPrepared = {}
-/\ onceRcvPrepare = [ x0 \in RMs |-> FALSE]
-/\ onceSndCommit = [ x0 \in RMs |-> FALSE]
-/\ onceSndAbort = [ x0 \in RMs |-> FALSE]
+/\ Fluent11 = [ x0 \in RMs |-> TRUE]
+/\ Fluent9 = [ x0 \in RMs |-> FALSE]
+/\ Fluent8 = [ x0 \in RMs |-> FALSE]
+/\ Fluent7 = [ x0 \in RMs |-> FALSE]
+/\ Fluent6 = [ x0 \in RMs |-> FALSE]
+/\ Fluent10 = [ x0 \in RMs |-> FALSE]
 
 RcvPrepare(rm) ==
 /\ tmState = "init"
 /\ tmPrepared' = (tmPrepared \cup {rm})
 /\ UNCHANGED <<tmState>>
-/\ onceRcvPrepare' = [onceRcvPrepare EXCEPT![rm] = TRUE]
-/\ UNCHANGED<<onceSndCommit, onceSndAbort>>
+/\ UNCHANGED<<>>
+/\ CandSep'
+/\ Fluent8' = [Fluent8 EXCEPT![rm] = TRUE]
+/\ Fluent7' = [Fluent7 EXCEPT![rm] = TRUE]
+/\ UNCHANGED<<Fluent11, Fluent9, Fluent6, Fluent10>>
 /\ CandSep'
 
 SndCommit(rm) ==
@@ -32,16 +38,22 @@ SndCommit(rm) ==
 /\ tmPrepared = RMs
 /\ tmState' = "committed"
 /\ UNCHANGED <<tmPrepared>>
-/\ onceSndCommit' = [onceSndCommit EXCEPT![rm] = TRUE]
-/\ UNCHANGED<<onceRcvPrepare, onceSndAbort>>
+/\ UNCHANGED<<>>
+/\ CandSep'
+/\ Fluent11' = [Fluent11 EXCEPT![rm] = FALSE]
+/\ Fluent9' = [Fluent9 EXCEPT![rm] = TRUE]
+/\ Fluent6' = [Fluent6 EXCEPT![rm] = TRUE]
+/\ UNCHANGED<<Fluent8, Fluent7, Fluent10>>
 /\ CandSep'
 
 SndAbort(rm) ==
 /\ (tmState \in {"init","aborted"})
 /\ tmState' = "aborted"
 /\ UNCHANGED <<tmPrepared>>
-/\ onceSndAbort' = [onceSndAbort EXCEPT![rm] = TRUE]
-/\ UNCHANGED<<onceRcvPrepare, onceSndCommit>>
+/\ UNCHANGED<<>>
+/\ CandSep'
+/\ Fluent10' = [Fluent10 EXCEPT![rm] = TRUE]
+/\ UNCHANGED<<Fluent11, Fluent9, Fluent8, Fluent7, Fluent6>>
 /\ CandSep'
 
 Next ==
@@ -57,8 +69,7 @@ TypeOK ==
 /\ (tmPrepared \in SUBSET(RMs))
 
 Safety ==
-/\ \A V \in RMs : (onceSndCommit[V]) => (onceRcvPrepare[V])
-/\ \A V \in RMs : \A W \in RMs : (onceSndCommit[V]) => (onceRcvPrepare[W])
-/\ \A V \in RMs : (onceSndAbort[V]) => (~(onceSndCommit[V]))
-/\ \A V \in RMs : (onceSndCommit[V]) => (\A W \in RMs : ~(onceSndAbort[W]))
+/\ \A var0 \in RMs : (Fluent6[var0]) => (Fluent7[var0])
+/\ \A var0 \in RMs : (\E var1 \in RMs : Fluent9[var1]) => (Fluent8[var0])
+/\ \A var0 \in RMs : (Fluent10[var0]) => (\A var1 \in RMs : Fluent11[var1])
 =============================================================================
