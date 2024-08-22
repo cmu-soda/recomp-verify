@@ -66,10 +66,12 @@ public class FormulaSynth {
 		PerfTimer timer = new PerfTimer();
 		int id = 0;
 		for (final Map<String,String> m : envVarTypes) {
-			final FormulaSynthWorker worker = new FormulaSynthWorker(this, m, id++, negTrace, posTraces,
-					tlcSys, tlcComp, internalActions, sortElementsMap, actionParamTypes, maxActParamLen,
-					qvars, legalEnvVarCombos, curNumFluents);
-			this.workers.add(worker);
+			for (int numQuants = 1; numQuants <= qvars.size(); ++numQuants) {
+				final FormulaSynthWorker worker = new FormulaSynthWorker(this, m, id++, negTrace, posTraces,
+						tlcSys, tlcComp, internalActions, sortElementsMap, actionParamTypes, maxActParamLen,
+						qvars, legalEnvVarCombos, curNumFluents, numQuants);
+				this.workers.add(worker);
+			}
 		}
 
 		try {

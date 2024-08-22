@@ -8,7 +8,7 @@ VARIABLES committed, currentTerm, log, Fluent6, state, config
 vars == <<committed, currentTerm, log, Fluent6, state, config>>
 
 CandSep ==
-\A var0 \in FinNat : \E var1 \in Quorums : Fluent6[var1][var0]
+\E var0 \in FinNat : \E var1 \in Server : Fluent6[var0]
 
 Secondary == "secondary"
 
@@ -84,7 +84,7 @@ BecomeLeader(i,voteQuorum,newTerm) ==
 /\ currentTerm' = [s \in Server |-> IF (s \in voteQuorum) THEN newTerm ELSE currentTerm[s]]
 /\ state' = [s \in Server |-> IF s = i THEN Primary ELSE IF (s \in voteQuorum) THEN Secondary ELSE state[s]]
 /\ UNCHANGED <<log,config,committed>>
-/\ Fluent6' = [Fluent6 EXCEPT![voteQuorum][newTerm] = FALSE]
+/\ Fluent6' = [Fluent6 EXCEPT![newTerm] = FALSE]
 /\ UNCHANGED<<>>
 
 CommitEntry(i,commitQuorum,ind,curTerm) ==
@@ -97,7 +97,7 @@ CommitEntry(i,commitQuorum,ind,curTerm) ==
 /\ ~((\E c \in committed : c.entry = <<ind,curTerm>>))
 /\ committed' = (committed \cup {[entry |-> <<ind,curTerm>>,term |-> curTerm]})
 /\ UNCHANGED <<currentTerm,state,log,config>>
-/\ Fluent6' = [Fluent6 EXCEPT![commitQuorum][ind] = FALSE]
+/\ Fluent6' = [Fluent6 EXCEPT![ind] = FALSE]
 /\ UNCHANGED<<>>
 
 UpdateTerms(i,j) ==
@@ -111,7 +111,7 @@ Init ==
 /\ log = [i \in Server |-> <<>>]
 /\ (\E initConfig \in SUBSET(Server) : (initConfig /= {} /\ config = [i \in Server |-> initConfig]))
 /\ committed = {}
-/\ Fluent6 = [ x0 \in Quorums |-> [ x1 \in FinNat |-> TRUE]]
+/\ Fluent6 = [ x0 \in FinNat |-> TRUE]
 
 Next ==
 \/ (\E s \in Server : (\E t \in FinNat : ClientRequest(s,t)))

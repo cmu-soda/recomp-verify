@@ -232,7 +232,6 @@ public class FormulaSeparation {
 	private AlloyTrace createAlloyTrace(final List<String> word, final String name, final String ext) {
 		// use the alphabet for the component
 		final Set<String> alphabet = this.tlcComp.actionsInSpec();
-		
 		final List<String> trace = word
 				.stream()
 				.filter(act -> {
@@ -247,19 +246,7 @@ public class FormulaSeparation {
 							.collect(Collectors.joining());
 				})
 				.collect(Collectors.toList());
-		
-		final int lastIdx = trace.size() - 1;
-		final String alloyLastIdx = "T" + lastIdx;
-		final String path = IntStream.range(0, trace.size())
-				.mapToObj(i -> {
-					final String time = "T" + i;
-					final String act = trace.get(i);
-					return time + "->" + act;
-				})
-				.collect(Collectors.joining(" + "));
-		final String pathParens = "(" + path + ")";
-		
-		return new AlloyTrace(name, ext, lastIdx, alloyLastIdx, pathParens, trace.size());
+		return new AlloyTrace(trace, name, ext);
 	}
 	
 	private Formula synthesizeFormula(final AlloyTrace negTrace, final List<AlloyTrace> posTraces, final int curNumFluents) {

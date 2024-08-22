@@ -35,6 +35,7 @@ public class FormulaSynthWorker implements Runnable {
 	private final Set<String> qvars;
 	private final Set<Set<String>> legalEnvVarCombos;
 	private final int curNumFluents;
+	private final int numQuantifiers;
 
 	// for some reason using a lock is much faster than using the synchronized keyword
 	private final Lock lock;
@@ -47,7 +48,7 @@ public class FormulaSynthWorker implements Runnable {
 			TLC tlcSys, TLC tlcComp, Set<String> internalActions,
 			Map<String, Set<String>> sortElementsMap, Map<String, List<String>> actionParamTypes,
 			int maxActParamLen, Set<String> qvars, Set<Set<String>> legalEnvVarCombos,
-			int curNumFluents) {
+			int curNumFluents, int numQuantifiers) {
 		this.formulaSynth = formulaSynth;
 		this.envVarTypes = envVarTypes;
 		this.id = id;
@@ -62,6 +63,7 @@ public class FormulaSynthWorker implements Runnable {
 		this.qvars = qvars;
 		this.legalEnvVarCombos = legalEnvVarCombos;
 		this.curNumFluents = curNumFluents;
+		this.numQuantifiers = numQuantifiers;
 		
 		this.lock = new ReentrantLock();
 		this.process = null;
@@ -197,6 +199,22 @@ public class FormulaSynthWorker implements Runnable {
 				+ "}\n"
 				+ "";
 		
+		// determine the max length of the traces
+		final Set<AlloyTrace> allTraces = Utils.union(posTraces.stream().collect(Collectors.toSet()), Utils.setOf(negTrace));
+		final int maxTraceLen = allTraces.stream()
+				.mapToInt(t -> t.lastIdx())
+				.max()
+				.getAsInt();
+		
+		// get a list of all the actions that occur across all traces; these are the only
+		// actions we need to declare in the Alloy file
+		final Set<String> allActions = allTraces
+				.stream()
+				.map(t -> t.trace().stream().collect(Collectors.toSet()))
+				.reduce((Set<String>)new HashSet<String>(),
+						(acc,s) -> Utils.union(acc, s),
+						(s1,s2) -> Utils.union(s1, s2));
+		
 		// define each concrete action (and its base name) in the component
 		Map<String,String> actToBaseName = new HashMap<>();
 		StringBuilder concActsBuilder = new StringBuilder();
@@ -227,6 +245,10 @@ public class FormulaSynthWorker implements Runnable {
 			
 			final String strConcreteActions = concreteActionParams
 					.stream()
+					.filter(params -> {
+						final String concActName = act + String.join("", params);
+						return allActions.contains(concActName);
+					})
 					.map(params -> {
 						final String concActName = act + String.join("", params);
 						List<String> paramAssgs = new ArrayList<>();
@@ -246,13 +268,6 @@ public class FormulaSynthWorker implements Runnable {
 			
 			concActsBuilder.append(strBaseDecl).append("\n").append(strConcreteActions).append("\n\n");
 		}
-		
-		// determine the max length of the traces
-		final Set<AlloyTrace> allTraces = Utils.union(posTraces.stream().collect(Collectors.toSet()), Utils.setOf(negTrace));
-		final int maxTraceLen = allTraces.stream()
-				.mapToInt(t -> t.lastIdx())
-				.max()
-				.getAsInt();
 		
 		// create the indices that are needed for the traces
 		final String strIndices = IntStream.range(0, maxTraceLen+1)
@@ -342,6 +357,7 @@ public class FormulaSynthWorker implements Runnable {
 		final String baseNamesPartialInstance = "baseName = " +
 				actToBaseName.keySet()
 				.stream()
+				.filter(a -> allActions.contains(a))
 				.map(a -> a + "->" + actToBaseName.get(a))
 				.collect(Collectors.joining(" +\n		"));
 		final String partialInstance = "fact PartialInstance {\n" +
@@ -350,6 +366,11 @@ public class FormulaSynthWorker implements Runnable {
 					"	" + strNonEmptyEnvsPartialInstance + "\n\n" +
 					"	" + baseNamesPartialInstance + "\n" +
 					"}";
+		
+		// number of quantifiers
+		final String numQuantifiersFacts = "fact {\n"
+				+ "	#(Forall + Exists) = " + this.numQuantifiers + "\n"
+				+ "}";
 		
 		// pos trace delcs
 		final List<String> posTraceDecls = posTraces
@@ -372,6 +393,7 @@ public class FormulaSynthWorker implements Runnable {
 				+ "\n" + qvarDelc + "\n\n"
 				+ "\n" + strNonEmptyEnvsDecls + "\n\n"
 				+ "\n" + partialInstance + "\n\n"
+				+ "\n" + numQuantifiersFacts + "\n\n"
 				+ "\n" + negTrace + "\n\n"
 				+ String.join("\n", posTraceDecls) + "\n";
 		Utils.writeFile(fileName, alloyFormulaInfer);

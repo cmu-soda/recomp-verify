@@ -1,5 +1,9 @@
 package recomp;
 
+import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+
 public class AlloyTrace {
 	private final boolean hasError;
 	private final String name;
@@ -7,6 +11,7 @@ public class AlloyTrace {
 	private final int lastIdx;
 	private final String alloyLastIdx;
 	private final String path;
+	private final List<String> trace;
 	private final int size;
 	
 	public AlloyTrace() {
@@ -16,18 +21,30 @@ public class AlloyTrace {
 		this.lastIdx = -1;
 		this.alloyLastIdx = null;
 		this.path = null;
+		this.trace = null;
 		this.size = 0;
 	}
 	
-	public AlloyTrace(final String name, final String ext, final int lastIdx, final String alloyLastIdx,
-			final String path, final int size) {
+	public AlloyTrace(final List<String> trace, final String name, final String ext) {
+		final int lastIdx = trace.size() - 1;
+		final String alloyLastIdx = "T" + lastIdx;
+		final String path = IntStream.range(0, trace.size())
+				.mapToObj(i -> {
+					final String time = "T" + i;
+					final String act = trace.get(i);
+					return time + "->" + act;
+				})
+				.collect(Collectors.joining(" + "));
+		final String pathParens = "(" + path + ")";
+		
 		this.hasError = true;
 		this.name = name;
 		this.ext = ext;
 		this.lastIdx = lastIdx;
 		this.alloyLastIdx = alloyLastIdx;
-		this.path = path;
-		this.size = size;
+		this.path = pathParens;
+		this.trace = trace;
+		this.size = trace.size();
 	}
 	
 	public boolean hasError() {
@@ -48,6 +65,10 @@ public class AlloyTrace {
 	
 	public String path() {
 		return this.path;
+	}
+	
+	public List<String> trace() {
+		return this.trace;
 	}
 	
 	public int size() {
