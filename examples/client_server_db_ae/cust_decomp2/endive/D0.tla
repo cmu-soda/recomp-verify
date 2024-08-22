@@ -1,24 +1,20 @@
 --------------------------- MODULE D0 ---------------------------
-EXTENDS Naturals, Sequences, FiniteSets, TLC
+EXTENDS Naturals, Sequences, FiniteSets, TLC, Randomization
 
 CONSTANTS Node, Request, Response, DbRequestId
 
-VARIABLES Fluent11, Fluent7, request_sent, response_sent, Fluent10, Fluent4, match, response_received, Fluent1, Fluent0
+VARIABLES Fluent12, Fluent11, Fluent9, Fluent14, Fluent8, Fluent13, request_sent, response_sent, Fluent10, match, response_received
 
-vars == <<Fluent11, Fluent7, request_sent, response_sent, Fluent10, Fluent4, match, response_received, Fluent1, Fluent0>>
+vars == <<Fluent12, Fluent11, Fluent9, Fluent14, Fluent8, Fluent13, request_sent, response_sent, Fluent10, match, response_received>>
 
-(*
-CandSep ==
-\*/\ \A var0 \in Response : (Fluent3[var0]) => (Fluent2[var0])
-\*/\ \A var0 \in Request : (Fluent5[var0]) => (Fluent6[var0])
-\*/\ \A var0 \in DbRequestId : (Fluent8[var0]) => (Fluent9[var0])
-*)
+NextUnchanged == UNCHANGED vars
+Symmetry == Permutations(Node) \cup Permutations(Request) \cup Permutations(Response) \cup Permutations(DbRequestId)
 
 CandSep ==
-/\ \A var0 \in DbRequestId : (Fluent1[var0]) => (Fluent0[var0])
-/\ \A var0 \in DbRequestId : \E var1 \in Node : Fluent4[var0][var1]
-/\ \A var0 \in DbRequestId : \E var1 \in Request : Fluent7[var1][var0]
-/\ \A var0 \in DbRequestId : \A var1 \in Response : (Fluent10[var1][var0]) => (Fluent11[var1][var0])
+/\ \A var0 \in DbRequestId : \E var1 \in Node : Fluent8[var1][var0]
+/\ \A var0 \in DbRequestId : \A var1 \in Node : (Fluent10[var0][var1]) => (Fluent9[var1][var0])
+/\ \A var0 \in Request : \A var1 \in DbRequestId : (Fluent11[var1][var0]) => (Fluent12[var1][var0])
+/\ \A var0 \in Response : \A var1 \in DbRequestId : (Fluent14[var0][var1]) => (Fluent13[var0][var1])
 
 ResponseMatched(n,p) ==
 \E r \in Request :
@@ -28,41 +24,39 @@ ResponseMatched(n,p) ==
 NewRequest(n,r) ==
 /\ request_sent' = (request_sent \cup {<<n,r>>})
 /\ UNCHANGED <<match,response_sent,response_received>>
-/\ UNCHANGED<<Fluent11, Fluent7, Fluent10, Fluent4, Fluent1, Fluent0>>
+/\ UNCHANGED<<Fluent12, Fluent11, Fluent9, Fluent14, Fluent8, Fluent13, Fluent10>>
 /\ CandSep'
 
 ServerProcessRequest(n,r,i) ==
 /\ (<<n,r>> \in request_sent)
 /\ UNCHANGED <<match,request_sent,response_sent,response_received>>
-/\ Fluent7' = [Fluent7 EXCEPT![r][i] = FALSE]
-/\ Fluent4' = [Fluent4 EXCEPT![i][n] = FALSE]
-/\ Fluent1' = [Fluent1 EXCEPT![i] = FALSE]
-/\ Fluent0' = [Fluent0 EXCEPT![i] = FALSE]
-/\ UNCHANGED<<Fluent11, Fluent10>>
+/\ Fluent11' = [Fluent11 EXCEPT![i][r] = FALSE]
+/\ Fluent8' = [Fluent8 EXCEPT![n][i] = FALSE]
+/\ Fluent10' = [Fluent10 EXCEPT![i][n] = FALSE]
+/\ UNCHANGED<<Fluent12, Fluent9, Fluent14, Fluent13>>
 /\ CandSep'
 
 DbProcessRequest(i,r,p) ==
 /\ (<<r,p>> \in match)
 /\ UNCHANGED <<match,request_sent,response_sent,response_received>>
-/\ Fluent7' = [Fluent7 EXCEPT![r][i] = FALSE]
-/\ Fluent10' = [Fluent10 EXCEPT![p][i] = FALSE]
-/\ UNCHANGED<<Fluent11, Fluent4, Fluent1, Fluent0>>
+/\ Fluent12' = [Fluent12 EXCEPT![i][r] = FALSE]
+/\ Fluent14' = [Fluent14 EXCEPT![p][i] = FALSE]
+/\ UNCHANGED<<Fluent11, Fluent9, Fluent8, Fluent13, Fluent10>>
 /\ CandSep'
 
 ServerProcessDbResponse(n,i,p) ==
 /\ response_sent' = (response_sent \cup {<<n,p>>})
 /\ UNCHANGED <<match,request_sent,response_received>>
-/\ Fluent11' = [Fluent11 EXCEPT![p][i] = FALSE]
-/\ Fluent4' = [Fluent4 EXCEPT![i][n] = FALSE]
-/\ Fluent0' = [Fluent0 EXCEPT![i] = FALSE]
-/\ UNCHANGED<<Fluent7, Fluent10, Fluent1>>
+/\ Fluent9' = [Fluent9 EXCEPT![n][i] = FALSE]
+/\ Fluent13' = [Fluent13 EXCEPT![p][i] = FALSE]
+/\ UNCHANGED<<Fluent12, Fluent11, Fluent14, Fluent8, Fluent10>>
 /\ CandSep'
 
 ReceiveResponse(n,p) ==
 /\ (<<n,p>> \in response_sent)
 /\ response_received' = (response_received \cup {<<n,p>>})
 /\ UNCHANGED <<match,request_sent,response_sent>>
-/\ UNCHANGED<<Fluent11, Fluent7, Fluent10, Fluent4, Fluent1, Fluent0>>
+/\ UNCHANGED<<Fluent12, Fluent11, Fluent9, Fluent14, Fluent8, Fluent13, Fluent10>>
 /\ CandSep'
 
 Next ==
@@ -77,12 +71,13 @@ Init ==
 /\ request_sent = {}
 /\ response_sent = {}
 /\ response_received = {}
-/\ Fluent11 = [ x0 \in Response |-> [ x1 \in DbRequestId |-> TRUE]]
-/\ Fluent7 = [ x0 \in Request |-> [ x1 \in DbRequestId |-> TRUE]]
-/\ Fluent10 = [ x0 \in Response |-> [ x1 \in DbRequestId |-> TRUE]]
-/\ Fluent4 = [ x0 \in DbRequestId |-> [ x1 \in Node |-> TRUE]]
-/\ Fluent1 = [ x0 \in DbRequestId |-> TRUE]
-/\ Fluent0 = [ x0 \in DbRequestId |-> TRUE]
+/\ Fluent12 = [ x0 \in DbRequestId |-> [ x1 \in Request |-> TRUE]]
+/\ Fluent11 = [ x0 \in DbRequestId |-> [ x1 \in Request |-> TRUE]]
+/\ Fluent9 = [ x0 \in Node |-> [ x1 \in DbRequestId |-> TRUE]]
+/\ Fluent14 = [ x0 \in Response |-> [ x1 \in DbRequestId |-> TRUE]]
+/\ Fluent8 = [ x0 \in Node |-> [ x1 \in DbRequestId |-> TRUE]]
+/\ Fluent13 = [ x0 \in Response |-> [ x1 \in DbRequestId |-> TRUE]]
+/\ Fluent10 = [ x0 \in DbRequestId |-> [ x1 \in Node |-> TRUE]]
 
 Spec == (Init /\ [][Next]_vars)
 
@@ -91,6 +86,27 @@ TypeOK ==
 /\ (request_sent \in SUBSET((Node \X Request)))
 /\ (response_sent \in SUBSET((Node \X Response)))
 /\ (response_received \in SUBSET((Node \X Response)))
+/\ Fluent12 \in [DbRequestId -> [Request -> BOOLEAN]]
+/\ Fluent11 \in [DbRequestId -> [Request -> BOOLEAN]]
+/\ Fluent9  \in [Node -> [DbRequestId -> BOOLEAN]]
+/\ Fluent14 \in [Response -> [DbRequestId -> BOOLEAN]]
+/\ Fluent8  \in [Node -> [DbRequestId -> BOOLEAN]]
+/\ Fluent13 \in [Response -> [DbRequestId -> BOOLEAN]]
+/\ Fluent10 \in [DbRequestId -> [Node -> BOOLEAN]]
+
+RandNum == 3
+TypeOKRandom ==
+/\ match \in RandomSubset(7, SUBSET((Request \X Response)))
+/\ request_sent \in RandomSubset(7, SUBSET((Node \X Request)))
+/\ response_sent \in RandomSubset(7, SUBSET((Node \X Response)))
+/\ response_received \in RandomSubset(7, SUBSET((Node \X Response)))
+/\ Fluent12 \in RandomSubset(RandNum, [DbRequestId -> [Request -> BOOLEAN]])
+/\ Fluent11 \in RandomSubset(RandNum, [DbRequestId -> [Request -> BOOLEAN]])
+/\ Fluent9  \in RandomSubset(RandNum, [Node -> [DbRequestId -> BOOLEAN]])
+/\ Fluent14 \in RandomSubset(RandNum, [Response -> [DbRequestId -> BOOLEAN]])
+/\ Fluent8  \in RandomSubset(RandNum, [Node -> [DbRequestId -> BOOLEAN]])
+/\ Fluent13 \in RandomSubset(RandNum, [Response -> [DbRequestId -> BOOLEAN]])
+/\ Fluent10 \in RandomSubset(RandNum, [DbRequestId -> [Node -> BOOLEAN]])
 
 Safety == (\A n \in Node, p \in Response : ((<<n,p>> \in response_received) => ResponseMatched(n,p)))
 =============================================================================

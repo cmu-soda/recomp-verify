@@ -145,9 +145,11 @@ public final class Worker extends IdThread implements IWorker, INextStateFunctor
                             if (isGoodState) {
                             	ltsBuilder.addTransition(curState, action, nextState);
                             	if (ltsBuilder.size() >= TLC.maxNumStates) {
+                            		//System.err.println("WARNING: reached max unique state capacity, the synthesized assumption may be incorrect.");
                             		// we've reached the maximum capacity for states
             						// dequeue everything and return as fast as possible
-            						this.squeue.sDequeue((int) this.squeue.size());
+            						this.squeue.finishAll();
+            						this.tlc.notify();
                             	}
             				}
             				else {
@@ -156,7 +158,8 @@ public final class Worker extends IdThread implements IWorker, INextStateFunctor
             					// TODO this optimization should be allowed after <numPosTraces> errors
         						// we found a violation of: Inv => CandSep
         						// dequeue everything and return as fast as possible
-        						//this.squeue.sDequeue((int) this.squeue.size());
+        						this.squeue.finishAll();
+        						this.tlc.notify();
             				}
                     	}
                 	}
@@ -515,7 +518,8 @@ public final class Worker extends IdThread implements IWorker, INextStateFunctor
     					// TODO this optimization should be allowed after <numPosTraces> errors
 						// we found a violation of: Inv => CandSep
 						// dequeue everything and return as fast as possible
-						//this.squeue.sDequeue((int) this.squeue.size());
+						this.squeue.finishAll();
+						this.tlc.notify();
 					}
     			}
     			//StaticTimer.exit();

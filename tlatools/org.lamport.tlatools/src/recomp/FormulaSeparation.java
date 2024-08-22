@@ -10,6 +10,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import com.google.common.collect.Lists;
+
 import cmu.isr.ts.LTS;
 import cmu.isr.ts.lts.MultiTraceCex;
 import cmu.isr.ts.lts.RandTraceUtils;
@@ -49,7 +51,6 @@ public class FormulaSeparation {
 		this.useIntermediateProp = !propFile.equals("none");
 		this.intermediateProp = this.useIntermediateProp ? new Formula( String.join("",Utils.fileContents(propFile)) ) : null;
 		
-		// TODO bound model checking to, say, 1 mil states
 		tlcSys = new TLC();
     	tlcSys.modelCheck(tlaSys, cfgSys);
 		tlcComp = new TLC();
@@ -95,7 +96,8 @@ public class FormulaSeparation {
 						.collect(Collectors.toSet()))
 				.collect(Collectors.toSet());
 		
-    	maxNumPosTracesToAdd = 3; // TODO this should be a param
+		// TODO numbers above 1 won't work unless Worker.java is modified to allow multiple errors
+    	maxNumPosTracesToAdd = 1; //3; // TODO this should be a param
 	}
 	
 	public String synthesizeSepInvariant() {
@@ -237,6 +239,13 @@ public class FormulaSeparation {
 					final String abstractAct = act.replaceAll("\\..*$", "");
 					return alphabet.contains(abstractAct);
 				})
+				.map(a -> {
+					return Utils.toArrayList(a.split("\\."))
+							.stream()
+							.map(p -> Utils.toArrayList(p.replaceAll("[{}]", "").split(","))) // conc act -> list of conc params
+							.map(l -> sanitizeTokensForAlloy(l)) // sanitize each param so it can be encoded in an Alloy file
+							.collect(Collectors.joining());
+				})
 				.collect(Collectors.toList());
 		
 		final int lastIdx = trace.size() - 1;
@@ -244,7 +253,7 @@ public class FormulaSeparation {
 		final String path = IntStream.range(0, trace.size())
 				.mapToObj(i -> {
 					final String time = "T" + i;
-					final String act = trace.get(i).replace(".", "");
+					final String act = trace.get(i);
 					return time + "->" + act;
 				})
 				.collect(Collectors.joining(" + "));
@@ -436,13 +445,91 @@ public class FormulaSeparation {
 			if (constList.size() == 2) {
 				// constList is a CONSTANT assignment
 				final String sort = constList.get(0);
-				final Set<String> elems = Utils.toArrayList(constList.get(1).replaceAll("[{}]", "").split(","))
-						.stream() // each element in the stream is an array of elements (atoms)
-						.map(e -> e.trim())
-						.collect(Collectors.toSet());
+				final Set<String> elems = parseElements(constList.get(1));
 				sortElements.put(sort, elems);
 			}
 		}
 		return sortElements;
 	}
+	
+	/**
+	 * We expect <rawElems> to encode a set. If it doesn't, we throw.
+	 * @param rawElems
+	 * @return
+	 */
+	private static Set<String> parseElements(final String rawSet) {
+		final String trimmedRawSet = rawSet.trim(); // to be extra defensive
+		final char rawSetFirstChar = trimmedRawSet.charAt(0);
+		final char rawSetLastChar = trimmedRawSet.charAt(trimmedRawSet.length()-1);
+		Utils.assertTrue(rawSetFirstChar == '{' && rawSetLastChar == '}',
+				"Sorts must be sets of elements; encountered not set value: " + rawSet);
+		
+		final String rawElems = trimmedRawSet.substring(1, trimmedRawSet.length()-1).trim();
+		final List<String> tokens = Utils.toArrayList(rawElems.split(" "))
+				.stream()
+				.filter(e -> !e.equals(","))
+				.collect(Collectors.toList());
+		
+		final List<List<String>> tokenGroups = createTokenGroups(tokens);
+		return tokenGroups
+				.stream()
+				.map(g -> sanitizeTokensForAlloy(g))
+				.collect(Collectors.toSet());
+	}
+	
+	private static List<List<String>> createTokenGroups(final List<String> tokens) {
+		List<List<String>> groups = new ArrayList<>();
+		int parenDepth = 0;
+		List<String> curGroup = new ArrayList<>();
+		for (int i = 0; i < tokens.size(); ++i) {
+			final String tok = tokens.get(i);
+			final boolean isLeftParen = tok.equals("{");
+			final boolean isRightParen = tok.equals("}");
+			
+			// if the token is a curly brace (I'm overloading "curly brace" as "paren")
+			if (isLeftParen) {
+				++parenDepth;
+			}
+			else if (isRightParen) {
+				--parenDepth;
+			}
+			else {
+				// if it's not a paren, add it to the current token group
+				curGroup.add(tok);
+			}
+			
+			// when the parens are balanced we've completed a new token group
+			if (parenDepth == 0) {
+				groups.add(curGroup);
+				curGroup = new ArrayList<>();
+			}
+		}
+		return groups;
+	}
+	
+	/**
+	 * this code stub will ensure that curly braces and numbers are in a format where
+	 * they can be correctly used in an Alloy file.
+	 * @param toks
+	 * @return
+	 */
+	private static String sanitizeTokensForAlloy(final List<String> toks) {
+		if (toks.isEmpty()) {
+			return "";
+		}
+		final boolean isSet = toks.size() > 1;
+		if (isSet) {
+			final String toksStr = toks
+					.stream()
+					.map(t -> t.trim())
+					.collect(Collectors.joining());
+			// add underscores to mark sets
+			return "_" + toksStr + "_";
+		} else {
+			final String elem = toks.get(0).trim();
+			// precede numbers with "NUM" to get the Alloy file to compile
+			return elem.matches("[0-9]+") ? "NUM"+elem : elem;
+		}
+	}
 }
+

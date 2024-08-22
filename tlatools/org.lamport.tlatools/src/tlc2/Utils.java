@@ -271,6 +271,18 @@ public class Utils {
     	}
     	return String.join(", ", varArrowList);
     }
+    
+    public static <T> List<T> listOf(T elem) {
+    	List<T> l = new ArrayList<>();
+    	l.add(elem);
+    	return l;
+    }
+    
+    public static <T> List<T> append(List<T> l1, List<T> l2) {
+    	List<T> l = new ArrayList<>(l1);
+    	l.addAll(l2);
+    	return l;
+    }
 
     public static <T> ArrayList<T> toArrayList(Set<T> src) {
     	ArrayList<T> dst = new ArrayList<T>();

@@ -147,17 +147,11 @@ public class FormulaSynthWorker implements Runnable {
 		final String strFormulaSize = "for " + formulaSize + " Formula, " + numSymActs + " FlSymAction";
 		
 		// add all atoms, i.e. the values in each constant
-		final Set<String> allAtoms = tlcSys.tool.getModelConfig().getConstantsAsList()
+		final Set<String> allAtoms = this.sortElementsMap.values()
 				.stream()
-				.filter(l -> l.size() == 2) // only retain assignments
-				.map(l -> l.get(1)) // only retain the values of each assignment (i.e. the set of atoms)
-				.map(s -> s.replaceAll("[{}]", "").split(",")) // each element in the stream is now an array of atoms
 				.reduce((Set<String>)new HashSet<String>(),
-						(acc,l) -> Utils.union(acc, Utils.toSet(l)),
-						(l1,l2) -> Utils.union(l1,l2))
-				.stream()
-				.map(s -> s.trim())
-				.collect(Collectors.toSet());
+						(acc,s) -> Utils.union(acc, s),
+						(s1,s2) -> Utils.union(s1,s2));
 		final String strAtomList = String.join(", ", allAtoms);
 		final String atomsDecl = "one sig " + strAtomList + " extends Atom {}";
 		
@@ -498,10 +492,6 @@ public class FormulaSynthWorker implements Runnable {
 			+ "    // fluent) in the _hist TLA+ code.\n"
 			+ "    actToFlParamsMap : set(ParamIdx->ParamIdx)\n"
 			+ "} {\n"
-			+ "    // actToFlParamsMap is an injective function\n"
-			+ "    all x1,x2,y1,y2 : ParamIdx |\n"
-			+ "        (x1->y1 in actToFlParamsMap and x2->y2 in actToFlParamsMap) implies (x1->y1 = x2->y2 or (not x1=x2 and not y1=y2))\n"
-			+ "\n"
 			+ "    // domain(actToFlParamsMap) \\subseteq paramIdxs(baseName)\n"
 			+ "    actToFlParamsMap.ParamIdx in baseName.paramIdxs\n"
 			+ "}\n"
@@ -536,6 +526,13 @@ public class FormulaSynthWorker implements Runnable {
 			+ "            all actIdx : a.actToFlParamsMap.ParamIdx |\n"
 			+ "                let flIdx = actIdx.(a.actToFlParamsMap) |\n"
 			+ "                    flIdx.flParamTypes = actIdx.(a.baseName.paramTypes)\n"
+			+ "\n"
+			+ "    // actToFlParamsMap is an injective function\n"
+			+ "    // furthermore, when we combine actToFlParamsMap across all actions, the combination\n"
+			+ "    // must STILL be injective\n"
+			+ "    all x1,x2,y1,y2 : ParamIdx |\n"
+			+ "        (x1->y1 in (initFl+termFl).actToFlParamsMap and x2->y2 in (initFl+termFl).actToFlParamsMap) implies (x1->y1 = x2->y2 or (not x1=x2 and not y1=y2))\n"
+			+ "\n"
 			+ "}\n"
 			+ "\n"
 			+ "sig Forall extends Formula {\n"
