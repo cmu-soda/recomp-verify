@@ -1,5 +1,8 @@
 package recomp;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -19,7 +22,7 @@ public class FormulaSynth {
 	private int winningWorkerId;
 	private double winningTimeElapsedInSeconds;
 	private int numWorkersDone;
-	private Set<FormulaSynthWorker> workers;
+	private List<FormulaSynthWorker> workers;
 	private ExecutorService threadPool;
 
 	private final Lock lock = new ReentrantLock();
@@ -66,19 +69,31 @@ public class FormulaSynth {
 		PerfTimer timer = new PerfTimer();
 		int id = 0;
 		for (final Map<String,String> m : envVarTypes) {
-			for (int numQuants = 1; numQuants <= qvars.size(); ++numQuants) {
-				final FormulaSynthWorker worker = new FormulaSynthWorker(this, m, id++, negTrace, posTraces,
-						tlcSys, tlcComp, internalActions, sortElementsMap, actionParamTypes, maxActParamLen,
-						qvars, legalEnvVarCombos, curNumFluents, numQuants);
-				this.workers.add(worker);
+			for (int numForallQuants = 0; numForallQuants <= qvars.size(); ++numForallQuants) {
+				for (int numExistsQuants = 0; numExistsQuants <= qvars.size(); ++numExistsQuants) {
+					final FormulaSynthWorker worker = new FormulaSynthWorker(this, m, id++, negTrace, posTraces,
+							tlcSys, tlcComp, internalActions, sortElementsMap, actionParamTypes, maxActParamLen,
+							qvars, legalEnvVarCombos, curNumFluents, numForallQuants, numExistsQuants);
+					this.workers.add(worker);
+				}
 			}
 		}
+		
+		// sort the workers so that the ones with fewer quantifiers will execute first
+		Collections.sort(this.workers, new Comparator(){
+			@Override
+			public int compare(Object olhs, Object orhs) {
+				final FormulaSynthWorker lhs = (FormulaSynthWorker) olhs;
+				final FormulaSynthWorker rhs = (FormulaSynthWorker) orhs;
+				return Integer.compare(lhs.totalNumQuantifiers(), rhs.totalNumQuantifiers());
+			}
+		 });
 
 		try {
 			this.lock.lock();
 			
 			this.threadPool = Executors.newFixedThreadPool(MAX_NUM_THREADS);
-			for (FormulaSynthWorker worker : workers) {
+			for (FormulaSynthWorker worker : this.workers) {
 				this.threadPool.submit(worker);
 			}
 			
@@ -118,6 +133,6 @@ public class FormulaSynth {
 		this.winningWorkerId = -1;
 		this.winningTimeElapsedInSeconds = 0.0;
 		this.numWorkersDone = 0;
-		this.workers = new HashSet<>();
+		this.workers = new ArrayList<>();
 	}
 }

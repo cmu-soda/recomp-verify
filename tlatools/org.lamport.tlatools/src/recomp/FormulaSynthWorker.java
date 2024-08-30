@@ -35,7 +35,8 @@ public class FormulaSynthWorker implements Runnable {
 	private final Set<String> qvars;
 	private final Set<Set<String>> legalEnvVarCombos;
 	private final int curNumFluents;
-	private final int numQuantifiers;
+	private final int numForallQuantifiers;
+	private final int numExistsQuantifiers;
 
 	// for some reason using a lock is much faster than using the synchronized keyword
 	private final Lock lock;
@@ -48,7 +49,7 @@ public class FormulaSynthWorker implements Runnable {
 			TLC tlcSys, TLC tlcComp, Set<String> internalActions,
 			Map<String, Set<String>> sortElementsMap, Map<String, List<String>> actionParamTypes,
 			int maxActParamLen, Set<String> qvars, Set<Set<String>> legalEnvVarCombos,
-			int curNumFluents, int numQuantifiers) {
+			int curNumFluents, int numForallQuantifiers, int numExistsQuantifiers) {
 		this.formulaSynth = formulaSynth;
 		this.envVarTypes = envVarTypes;
 		this.id = id;
@@ -63,11 +64,16 @@ public class FormulaSynthWorker implements Runnable {
 		this.qvars = qvars;
 		this.legalEnvVarCombos = legalEnvVarCombos;
 		this.curNumFluents = curNumFluents;
-		this.numQuantifiers = numQuantifiers;
+		this.numForallQuantifiers = numForallQuantifiers;
+		this.numExistsQuantifiers = numExistsQuantifiers;
 		
 		this.lock = new ReentrantLock();
 		this.process = null;
 		this.globalTaskCompleted = false;
+	}
+	
+	public int totalNumQuantifiers() {
+		return this.numForallQuantifiers + this.numExistsQuantifiers;
 	}
 	
 	@Override
@@ -369,7 +375,8 @@ public class FormulaSynthWorker implements Runnable {
 		
 		// number of quantifiers
 		final String numQuantifiersFacts = "fact {\n"
-				+ "	#(Forall + Exists) = " + this.numQuantifiers + "\n"
+				+ "	#Forall = " + this.numForallQuantifiers + "\n"
+				+ "	#Exists = " + this.numExistsQuantifiers + "\n"
 				+ "}";
 		
 		// pos trace delcs
@@ -589,6 +596,10 @@ public class FormulaSynthWorker implements Runnable {
 			+ "	all f1, f2 : Exists | (f2 in f1.^children) implies not (f1.var = f2.var)\n"
 			+ "	all f1 : Forall, f2 : Exists | (f2 in f1.^children) implies not (f1.var = f2.var)\n"
 			+ "	all f1 : Exists, f2 : Forall | (f2 in f1.^children) implies not (f1.var = f2.var)\n"
+			+ "\n"
+			+ "	// quantifiers MUST have a variable in scope\n"
+			+ "	all f : Forall | f.var in ParamIdx.((f.^children).vars)\n"
+			+ "	all f : Exists | f.var in ParamIdx.((f.^children).vars)\n"
 			+ "}\n"
 			+ "\n"
 			+ "\n"
