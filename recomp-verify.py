@@ -19,8 +19,6 @@ def decomp(spec, cfg):
     cmd_args = ["java", "-jar", tool, spec, cfg, "--decomp"]
     ret = subprocess.run(cmd_args, capture_output=True, text=True)
     # Print the return code and stdout for debugging
-    # print(f"Decomp command exited with return code: {ret.returncode}")
-    # print(f"Decomp output: {ret.stdout}")
     return ret.stdout.rstrip().split(",")
 
 def create_err_trace(txt):
@@ -131,6 +129,29 @@ def get_winner_output(dest_dir, subdir):
         else:
             print(f"\nLog file {subdir}.log does not exist in {subdir}.")
 
+def create_script(script_name, spec, cfg, subdir, flag):
+    """
+    Creates a shell script for running a specific strategy.
+    """
+    return f"""#!/usr/bin/env bash
+echo "Running {script_name}"
+echo "Spec file is: {spec}"
+echo "CFG file is: {cfg}"
+echo "Running in subdirectory: {subdir}"
+
+# Navigate to the target directory
+cd "./{subdir}" || {{
+    echo "Failed to cd into the target directory." >&2
+    exit 1
+}}
+
+# Run the verification script with the {flag} option
+python3 "{os.path.join(root_dir, 'recomp-verify.py')}" \\
+    "{os.path.basename(spec)}" \\
+    "{os.path.basename(cfg)}" \\
+    {flag} > "{subdir}.log" 2>&1
+"""
+
 def run_multi_verif_with_parallel(dest_dir, spec, cfg, verbose=False):
     # Get the absolute path to recomp-verify.py using root_dir
     script_path = os.path.join(root_dir, "recomp-verify.py")
@@ -174,24 +195,7 @@ def run_multi_verif_with_parallel(dest_dir, spec, cfg, verbose=False):
         flag = strategy_flags[subdir]
 
         # Shell script content:
-        script_content = f"""#!/usr/bin/env bash
-echo "Running {script_name}"
-echo "Spec file is: {spec}"
-echo "CFG file is: {cfg}"
-echo "Original directory is: {orig_dir}"
-
-# Navigate to the target directory
-cd "./{subdir}" || {{
-    echo "Failed to cd into the target directory." >&2
-    exit 1
-}}
-
-# Run the verification script with the {flag} option
-python3 "/Users/eddie/Research/REU/recomp-verify/recomp-verify.py" \\
-    "{os.path.basename(spec)}" \\
-    "{os.path.basename(cfg)}" \\
-    {flag} > "{subdir}.log" 2>&1
-"""
+        script_content = create_script(script_name, spec, cfg, subdir, flag)
         script_path = os.path.join(dest_dir, script_name)
         with open(script_path, 'w') as f:
             f.write(script_content)
@@ -301,4 +305,5 @@ def run():
         verify_multi_process(spec, cfg, verbose)
     else:
         verify_single_process(spec, cfg, cust, naive, verbose)
+
 run()
