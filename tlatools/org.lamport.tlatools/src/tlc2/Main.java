@@ -2,6 +2,8 @@ package tlc2;
 
 import java.util.List;
 
+import cmu.isr.ts.LTS;
+import cmu.isr.ts.lts.ltsa.FSPWriter;
 import recomp.Composition;
 import recomp.Decomposition;
 import recomp.RecompVerify;
@@ -24,6 +26,8 @@ public class Main {
     		final String tla = args[0];
     		final String cfg = args[1];
     		final boolean decompose = hasFlag(args, "--decomp");
+    		final boolean toFsp = hasFlag(args, "--to-fsp");
+    		final boolean compose = hasFlag(args, "--compose");
     		
     		if (decompose) {
     			// write a config without any invariants / properties
@@ -34,6 +38,19 @@ public class Main {
     			final List<String> components = Decomposition.decompAll(tla, cfg);
     			final List<String> trimmedComponents = Composition.orderedTrimmedComponents(tla, cfg, components);
     		 	System.out.println(String.join(",", trimmedComponents));
+    		}
+    		else if (toFsp) {
+    			TLC tlc = new TLC();
+            	tlc.modelCheck(tla, cfg);
+            	LTS<Integer, String> lts = tlc.getLTSBuilder().toIncompleteDetAutWithoutAnErrorState();
+            	FSPWriter.INSTANCE.write(System.out, lts);
+    		}
+    		else if (compose) {
+    			Utils.assertTrue(args.length >= 5, "Compose requires 6 args (including the flag)");
+    			final String tla2 = args[2];
+    			final String cfg2 = args[3];
+    			final String newSpecName = args[4];
+    			Composition.composeFromScatch(tla, cfg, tla2, cfg2, newSpecName);
     		}
     		else {
     			// run recomp-verify
@@ -56,6 +73,8 @@ public class Main {
     	else {
     		System.out.println("usage1: recomp-verify <spec> <cfg> [--naive] [--cust <recomp-file>] [--verbose]\n"
     				+ "usage2: recomp-verify <spec> <cfg> --decomp\n"
+    				+ "usage3: recomp-verify <spec> <cfg> --to-fsp\n"
+    				+ "usage4: recomp-verify <spec1> <cfg1> <spec2> <cfg2> <newName> --compose\n"
     				+ "* in usage1: --naive and --cust are mutually exclusive");
     	}
     }

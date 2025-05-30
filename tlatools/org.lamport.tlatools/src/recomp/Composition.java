@@ -1,6 +1,7 @@
 package recomp;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -483,5 +484,121 @@ public class Composition {
     	final Set<String> propertyVars = tlc.stateVarsUsedInSameExprs(bVarsInGuards);
     	
     	return propertyVars;
+    }
+    
+    /**
+     * Compose two specifications that are given as parameters. This options is used directly from the CLI;
+     * it is not a part of the recomp-verify tools.
+     */
+    public static void composeFromScatch(final String tla1, final String cfg1, final String tla2, final String cfg2, final String newSpecName) {
+		TLC tlc1 = new TLC();
+    	tlc1.initialize(tla1, cfg1);
+    	final FastTool ft1 = (FastTool) tlc1.tool;
+    	TLC tlc2 = new TLC();
+    	tlc2.initialize(tla2, cfg2);
+    	final FastTool ft2 = (FastTool) tlc2.tool;
+    	
+    	// gather info about the specs
+		final String moduleName1 = tlc1.getModelName();
+		final String moduleName2 = tlc2.getModelName();
+
+    	final Set<String> allActs = Utils.union(tlc1.actionsInSpec(), tlc2.actionsInSpec());
+    	final Set<String> mutActs = Utils.intersection(tlc1.actionsInSpec(), tlc2.actionsInSpec());
+    	final Set<String> onlyActs1 = Utils.setMinus(tlc1.actionsInSpec(), mutActs);
+    	final Set<String> onlyActs2 = Utils.setMinus(tlc2.actionsInSpec(), mutActs);
+		
+		final Set<String> allStateVars = Utils.union(tlc1.stateVarsInSpec(), tlc2.stateVarsInSpec());
+    	
+		final Set<String> invs1 = Utils.toArrayList(ft1.getInvNames())
+				.stream()
+				.collect(Collectors.toSet());
+		final Set<String> invs2 = Utils.toArrayList(ft2.getInvNames())
+				.stream()
+				.collect(Collectors.toSet());
+		Utils.assertTrue(Utils.intersection(invs1, invs2).isEmpty(), "The two specs have at least one invariant with the same name!");
+		
+		// write the new composed spec
+        final String specDecl = "--------------------------- MODULE " + newSpecName + " ---------------------------";
+        final String endModule = "=============================================================================";
+        
+        final List<String> moduleWhiteList =
+        		Arrays.asList("Bags", "FiniteSets", "Functions", "Integers", "Json", "Naturals",
+        				"NaturalsInduction", "RealTime", "Sequences", "SequencesExt", "TLC", "TLCExt");
+		final Set<String> extends1 = Utils.filterArrayWhiteList(moduleWhiteList, ft1.getModuleNames())
+				.stream()
+				.collect(Collectors.toSet());
+		final Set<String> extends2 = Utils.filterArrayWhiteList(moduleWhiteList, ft2.getModuleNames())
+				.stream()
+				.collect(Collectors.toSet());
+        final List<String> moduleNameList = Utils.union(extends1, extends2).stream().collect(Collectors.toList());
+
+        final String moduleList = String.join(", ", moduleNameList);
+        final String varList = String.join(", ", allStateVars);
+        final String modulesDecl = moduleList.isEmpty() ? "" : "EXTENDS " + moduleList;
+        final String varsDecl = "VARIABLES " + varList;
+        
+        StringBuilder builder = new StringBuilder();
+        builder.append(specDecl).append("\n");
+        builder.append(modulesDecl).append("\n");
+        builder.append("\n");
+        builder.append(varsDecl).append("\n");
+        builder.append("\n");
+        builder.append("vars == <<").append(varList).append(">>\n");
+        builder.append("vars1 == <<").append(tlc1.stateVarsInSpec().stream().collect(Collectors.joining(","))).append(">>\n");
+        builder.append("vars2 == <<").append(tlc2.stateVarsInSpec().stream().collect(Collectors.joining(","))).append(">>\n");
+        builder.append("\n");
+        builder.append("C1 == INSTANCE ").append(moduleName1).append(" WITH ").append(tlc1.stateVarsInSpec().stream().map(v -> v+"<-"+v).collect(Collectors.joining(", "))).append("\n");
+        builder.append("C2 == INSTANCE ").append(moduleName2).append(" WITH ").append(tlc2.stateVarsInSpec().stream().map(v -> v+"<-"+v).collect(Collectors.joining(", "))).append("\n");
+        builder.append("\n");
+        builder.append("Init == C1!Init /\\ C2!Init\n");
+        builder.append("\n");
+        
+        // the actions
+        for (final String act : mutActs) {
+        	builder.append(act).append(" == C1!"+act+" /\\ C2!"+act+"\n");
+        }
+        for (final String act : onlyActs1) {
+        	builder.append(act).append(" == C1!"+act+" /\\ UNCHANGED vars2\n");
+        }
+        for (final String act : onlyActs2) {
+        	builder.append(act).append(" == C2!"+act+" /\\ UNCHANGED vars1\n");
+        }
+        builder.append("Next ==\n");
+        for (final String act : allActs) {
+        	builder.append("  \\/ ").append(act).append("\n");
+        }
+        
+        builder.append("\n");
+        builder.append("Spec == Init /\\ [][Next]_vars\n");
+        builder.append("\n");
+        
+        // the invariants
+        for (final String inv : invs1) {
+        	builder.append(inv).append(" == C1!").append(inv).append("\n");
+        }
+        for (final String inv : invs2) {
+        	builder.append(inv).append(" == C2!").append(inv).append("\n");
+        }
+        
+        builder.append("\n");
+        builder.append(endModule).append("\n");
+
+        final String fileName = newSpecName + ".tla";
+        final String file = fileName;
+        Utils.writeFile(file, builder.toString());
+        
+        
+        // also write a config file
+        StringBuilder cfgBuilder = new StringBuilder();
+        cfgBuilder.append("SPECIFICATION Spec").append("\n");
+        for (final String inv : invs1) {
+            cfgBuilder.append("INVARIANT ").append(inv).append("\n");
+        }
+        for (final String inv : invs2) {
+            cfgBuilder.append("INVARIANT ").append(inv).append("\n");
+        }
+
+        final String cfgFile = newSpecName + ".cfg";
+        Utils.writeFile(cfgFile, cfgBuilder.toString());
     }
 }
